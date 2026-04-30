@@ -1,0 +1,29 @@
+# When `.pubignore` is present at the package root, `flutter pub
+# publish` consults it instead of the package-root `.gitignore`.
+# Sub-directory `.gitignore` files still apply (the example app's
+# `.gitignore` covers Pods/, build/, etc.), so we only list
+# entries that diverge from the gitignore at this level.
+
+build
+.github/
+
+*.iml
+
+# Vendored copy of PreludeSession's Swift sources, mirrored into
+# the pod tree on every `pod install` from
+# `PRELUDE_SESSION_SDK_LOCAL_PATH`. Non-deterministic across
+# checkouts and only relevant during local development; the
+# published pod fetches PreludeSession by tag from the apple
+# session SDK repo. See `ios/prelude_flutter_session_sdk.podspec`
+# for the resolution rules. The package-root `.gitignore` also
+# excludes this; duplicated here because `.pubignore` shadows it.
+ios/sdk/
+
+# Internal demo app. Bundled in the monorepo for end-to-end
+# smoke testing of the plugin against a local PreludeSession,
+# but the public-repo publish script strips it out before
+# `flutter pub publish` runs in CI. Mirror that exclusion
+# here so a manual local publish (e.g. the first-time pub.dev
+# package claim) produces an archive identical to what the
+# automated workflow would publish.
+example/

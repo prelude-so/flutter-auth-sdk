@@ -1,0 +1,23 @@
+name: Publish to pub.dev (manual tag)
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.0.0)'
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for OIDC authentication with pub.dev
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub publish --dry-run
+      - run: flutter pub publish --force
