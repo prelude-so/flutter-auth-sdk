@@ -251,8 +251,7 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
     /// `handle` is threaded through explicitly because the
     /// step-up cache helpers are keyed on it; without an explicit
     /// parameter, naming a local `handle` here would shadow into
-    /// `self.handle` (the `FlutterPlugin` method), which has bit
-    /// us before.
+    /// `self.handle` (the `FlutterPlugin` method).
     private func dispatch(
         call: FlutterMethodCall,
         args: [String: Any],

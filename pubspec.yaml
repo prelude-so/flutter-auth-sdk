@@ -1,6 +1,6 @@
 name: prelude_flutter_session_sdk
 description: "Prelude Flutter Session SDK. Easily integrate Prelude session-based authentication in your Flutter application."
-version: 0.1.0
+version: 0.2.0
 homepage: "https://prelude.so"
 documentation: "https://docs.prelude.so/introduction/frontend-sdks/flutter"
 repository: "https://github.com/prelude-so/flutter-session-sdk"

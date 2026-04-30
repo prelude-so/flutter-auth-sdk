@@ -9,6 +9,12 @@ build
 
 *.iml
 
+# Libraries should not publish pubspec.lock per Dart's guidance:
+# https://dart.dev/tools/pub/dependencies#lockfiles
+# The package-root .gitignore also excludes it, but `.pubignore`
+# shadows the gitignore at this level so we list it here too.
+pubspec.lock
+
 # Vendored copy of PreludeSession's Swift sources, mirrored into
 # the pod tree on every `pod install` from
 # `PRELUDE_SESSION_SDK_LOCAL_PATH`. Non-deterministic across

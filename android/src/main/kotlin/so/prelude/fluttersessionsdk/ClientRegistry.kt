@@ -1,0 +1,105 @@
+package so.prelude.fluttersessionsdk
+
+import android.content.Context
+import so.prelude.android.session.PreludeSessionClient
+import so.prelude.android.session.PreludeSessionError
+import so.prelude.android.session.PreludeStepUpChallenge
+import so.prelude.android.session.PreludeStepUpStatus
+
+/**
+ * Per-handle native client cache plus per-handle in-flight step-up
+ * challenges. A single lock covers both: their lifetimes are coupled
+ * (disposing a handle should evict both in lockstep) and the wire
+ * form sent across the channel relies on the challenge cache to keep
+ * the bearer challenge JWT off the bridge.
+ */
+internal class ClientRegistry {
+    private val clients: MutableMap<String, PreludeSessionClient> = mutableMapOf()
+    private val challenges: MutableMap<String, MutableMap<String, PreludeStepUpChallenge>> =
+        mutableMapOf()
+    private val lock = Any()
+
+    /**
+     * Lookup-or-create runs inside the same lock on purpose: a split
+     * read-then-write would let two callers for the same handle both
+     * miss the cache, both run the `PreludeSessionClient` constructor
+     * (which provisions DPoP key state via Keystore), and the second
+     * writer would win — leaving the loser's keystore footprint with
+     * no Dart-side reference to dispose it.
+     */
+    fun resolveClient(
+        context: Context,
+        handle: String,
+        configRaw: Map<*, *>,
+    ): PreludeSessionClient =
+        synchronized(lock) {
+            clients[handle]?.let { return@synchronized it }
+            val config = ClientConfig.decode(configRaw)
+            val client = PreludeSessionClient(
+                context = context,
+                baseUrl = config.baseUrl,
+                hostOverride = config.hostOverride,
+                timeout = config.timeout,
+            )
+            clients[handle] = client
+            client
+        }
+
+    /** Drop the client and any cached challenges for [handle]. */
+    fun dispose(handle: String) {
+        synchronized(lock) {
+            clients.remove(handle)
+            challenges.remove(handle)
+        }
+    }
+
+    /** Drop everything; called on engine detach. */
+    fun clear() {
+        synchronized(lock) {
+            clients.clear()
+            challenges.clear()
+        }
+    }
+
+    /**
+     * Insert or replace a challenge under (handle, challengeID).
+     * Blocked challenges and the empty challengeID sentinel are
+     * skipped: neither is submittable, so caching them would only
+     * grow the map.
+     */
+    fun cacheChallenge(handle: String, challenge: PreludeStepUpChallenge) {
+        if (challenge.status == PreludeStepUpStatus.BLOCKED) return
+        if (challenge.challengeId.isEmpty()) return
+        synchronized(lock) {
+            // Don't resurrect entries for a handle that's already
+            // been disposed; the writer raced the dispose call.
+            if (clients[handle] == null) return
+            val slot = challenges.getOrPut(handle) { mutableMapOf() }
+            slot[challenge.challengeId] = challenge
+        }
+    }
+
+    fun evictChallenge(handle: String, challengeId: String) {
+        synchronized(lock) {
+            val slot = challenges[handle] ?: return
+            slot.remove(challengeId)
+            if (slot.isEmpty()) challenges.remove(handle)
+        }
+    }
+
+    /**
+     * Resolve a Dart-side challengeID back to the cached challenge.
+     * Throws `InvalidChallengeToken` when the challenge is unknown
+     * or has expired locally — both recover via
+     * `requestStepUp(scope:)` so the consumer handles a single error
+     * path.
+     */
+    fun lookupChallenge(handle: String, challengeId: String): PreludeStepUpChallenge {
+        val found = synchronized(lock) { challenges[handle]?.get(challengeId) }
+        return found ?: throw PreludeSessionError.InvalidChallengeToken(
+            "Step-up challenge `$challengeId` not found. " +
+                "Pass the value returned by requestStepUp / submitStepUpOTP " +
+                "unchanged, or call requestStepUp(scope:) again.",
+        )
+    }
+}

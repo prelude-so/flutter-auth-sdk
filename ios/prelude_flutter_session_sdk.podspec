@@ -2,17 +2,17 @@ require 'fileutils'
 
 Pod::Spec.new do |s|
   s.name             = 'prelude_flutter_session_sdk'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.summary          = 'Prelude Flutter Session SDK.'
   s.description      = <<-DESC
 Flutter plugin that bridges Prelude session-based authentication to
 Flutter applications by wrapping the native iOS PreludeSession and
-Android sessions SDKs.
+Android session SDKs.
                        DESC
   s.homepage         = 'https://prelude.so/'
   s.license          = 'Apache-2.0'
   s.author           = 'Prelude <hello@prelude.so> (https://github.com/prelude-so)'
-  s.source           = { git: 'https://github.com/prelude-so/flutter-sdk.git' }
+  s.source           = { git: 'https://github.com/prelude-so/flutter-session-sdk.git' }
   s.resource_bundles = {
     'prelude_flutter_session_sdk_privacy' => [
       'prelude_flutter_session_sdk/Sources/prelude_flutter_session_sdk/PrivacyInfo.xcprivacy'
@@ -116,11 +116,9 @@ Android sessions SDKs.
     'sdk/PreludeSession/**/*.swift',
   ]
 
-  # `Signals/PreludeSignalsAdapter.swift` imports the Prelude
-  # (apple-sdk core) module — not vendored yet by this plugin.
-  # The signals dispatcher protocol stays in scope; only the
-  # adapter is excluded. Will be enabled together with
-  # signals-dispatcher support in a future release.
+  # `Signals/PreludeSignalsAdapter.swift` imports a module that
+  # is not vendored by this plugin. The signals dispatcher
+  # protocol stays in scope; only the adapter is excluded.
   s.exclude_files = [
     '**/*.xcprivacy',
     'sdk/PreludeSession/Signals/PreludeSignalsAdapter.swift',

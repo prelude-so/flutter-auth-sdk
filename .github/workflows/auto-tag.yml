@@ -32,6 +32,16 @@ jobs:
             echo "tag_created=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Configure git identity
+        if: steps.check_tag.outputs.tag_created == 'true'
+        # `git tag -a` writes a tagger entry into the annotated tag,
+        # which requires a committer identity. The runner doesn't
+        # have one by default, so configure one scoped to this
+        # checkout (no --global) before tagging.
+        run: |
+          git config user.name  "Prelude Tech [bot]"
+          git config user.email "hello@prelude.so"
+
       - name: Create and push tag
         if: steps.check_tag.outputs.tag_created == 'true'
         env:

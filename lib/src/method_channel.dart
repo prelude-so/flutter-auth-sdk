@@ -182,7 +182,7 @@ class MethodChannelPreludeSessionClient extends PreludeSessionClientPlatform {
     required String code,
   }) async {
     // Only the [challengeID] travels over the channel; the token
-    // + expiry live in the iOS plugin's per-handle cache. The
+    // + expiry live in the native plugin's per-handle cache. The
     // bridge resolves them via [challengeID] on submit.
     final raw = await _invoke<Map<Object?, Object?>>('submitStepUpOTP', {
       ..._baseArgs(handle, config),

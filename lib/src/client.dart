@@ -13,7 +13,7 @@ import 'types/user.dart';
 ///
 /// Bridges to the native iOS (`PreludeSessionClient` in
 /// `PreludeSession`) and Android (`PreludeSessionClient` in
-/// `so.prelude.android:sessions`) session SDKs and surfaces their
+/// `so.prelude.android:session-sdk`) session SDKs and surfaces their
 /// public API through a single Dart entry point.
 ///
 /// Each Dart instance owns a distinct logical session: the SDK
@@ -26,11 +26,6 @@ import 'types/user.dart';
 /// Call [dispose] when you're done with an instance so the native
 /// client can be released. Forgetting to dispose leaks the native
 /// client until the process exits; nothing else breaks.
-///
-/// > **Android:** `0.1.0` ships iOS-only feature coverage. Every
-/// > non-trivial method throws `MissingPluginException` /
-/// > `UnimplementedError` on Android until
-/// > `so.prelude.android:sessions` is wired up in a future release.
 class PreludeSessionClient {
   /// Creates a session client.
   ///
@@ -39,10 +34,11 @@ class PreludeSessionClient {
   /// pass [Endpoint.custom] for staging or local development.
   ///
   /// [hostOverride] is the canonical-authority hint used as the
-  /// DPoP `htu`, the `Host:` header, and the Keychain partition
-  /// key on iOS. Set when the connection address differs from
-  /// what the server sees (e.g. localhost behind a reverse
-  /// proxy). `null` derives it from the endpoint's host.
+  /// DPoP `htu`, the `Host:` header, and the per-domain partition
+  /// key for the native credential store. Set when the connection
+  /// address differs from what the server sees (e.g. localhost
+  /// behind a reverse proxy). `null` derives it from the
+  /// endpoint's host.
   ///
   /// [timeout] is the per-request network timeout. Defaults to 10
   /// seconds.
