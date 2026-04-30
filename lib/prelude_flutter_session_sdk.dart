@@ -3,7 +3,7 @@
 /// Public Dart API surface for the Prelude session-based
 /// authentication SDK. Bridges to the native iOS
 /// (`PreludeSessionClient` in `PreludeSession`) and Android
-/// (`PreludeSessionClient` in `so.prelude.android:sessions`)
+/// (`PreludeSessionClient` in `so.prelude.android:session-sdk`)
 /// session SDKs.
 library;
 

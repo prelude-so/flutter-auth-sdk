@@ -2,15 +2,47 @@
 
 Flutter plugin that brings Prelude's session-based authentication to
 Flutter applications by bridging the native iOS (`PreludeSession`)
-and Android (`so.prelude.android:sessions`) session SDKs through a
+and Android (`so.prelude.android:session-sdk`) session SDKs through a
 single Dart API.
 
-> **Status:** `0.1.0` ships the iOS feature surface — email OTP
-> login, email and password login, password validation, refresh,
-> and logout — through a single Dart API. Android-side bridges to
-> `so.prelude.android:sessions` land in a follow-up release; until
-> then every Dart method other than `getPlatformVersion` throws
-> `MissingPluginException` on Android.
+## Installation
+
+Add the package to your Flutter app's `pubspec.yaml`:
+
+```yaml
+dependencies:
+  prelude_flutter_session_sdk: ^0.2.0
+```
+
+Then fetch it:
+
+```bash
+flutter pub get
+```
+
+Or one line:
+
+```bash
+flutter pub add prelude_flutter_session_sdk
+```
+
+### iOS
+
+Minimum deployment target: **iOS 15.1**. The plugin's CocoaPods
+spec downloads the matching native [`PreludeSession`][native-ios]
+sources during `pod install`; if you build with Swift Package
+Manager (`flutter config --enable-swift-package-manager`), the
+same dependency is resolved through SPM.
+
+[native-ios]: https://github.com/prelude-so/apple-session-sdk
+
+### Android
+
+Minimum SDK: **API 26**. Gradle resolves the matching native
+[`so.prelude.android:session-sdk`][native-android] dependency at
+build time.
+
+[native-android]: https://github.com/prelude-so/android-session-sdk
 
 ## Quick start
 
@@ -41,15 +73,6 @@ await client.logout();
 await client.dispose();
 ```
 
-## Relationship to `prelude_flutter_sdk`
-
-[`prelude_flutter_sdk`](https://pub.dev/packages/prelude_flutter_sdk)
-wraps Prelude's signals and silent-verification surface. This package
-wraps the session surface (login, refresh, logout) — apps that only
-need silent verification can keep using `prelude_flutter_sdk` alone
-and pay no extra binary cost for session code they don't use. Both
-packages install side-by-side.
-
 ## Package layout
 
 ```
@@ -62,7 +85,7 @@ prelude_flutter_session_sdk/
 │       ├── platform_interface.dart
 │       └── types/                         # value types
 ├── ios/                                   # iOS plugin (Swift)
-└── android/                               # Android plugin (Kotlin, stub)
+└── android/                               # Android plugin (Kotlin)
 ```
 
 The Dart layer follows the standard three-layer Flutter plugin

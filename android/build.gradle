@@ -1,5 +1,5 @@
 group = "so.prelude.fluttersessionsdk"
-version = "0.1.0"
+version = "0.2.0"
 
 buildscript {
     ext.kotlin_version = "2.1.0"
@@ -48,13 +48,11 @@ android {
     }
 
     dependencies {
-        // The native `so.prelude.android:sessions` dependency is
-        // intentionally not wired up yet: 0.1.0 ships iOS-only
-        // feature coverage, so on Android every method bridge
-        // throws `UnimplementedError` from Dart. The dependency
-        // is added together with the first Android method bridge
-        // in a future release.
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+        // Native session SDK. Pinned to the patch version so the
+        // bridge contract this plugin compiles against is the same
+        // one consumers resolve transitively at app build time.
+        implementation("so.prelude.android:session-sdk:0.1.1")
     }
 
     testOptions {

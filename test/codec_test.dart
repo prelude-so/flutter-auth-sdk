@@ -72,7 +72,7 @@ void main() {
       expect(phone, PreludeIdentifier.fromJson(phone.toJson()));
       expect(email, PreludeIdentifier.fromJson(email.toJson()));
 
-      // Wire keys match what the iOS encoder emits.
+      // Wire keys match what the native encoders emit.
       expect(phone.toJson(), {
         'type': 'phone_number',
         'value': '+15555550123',
@@ -220,10 +220,10 @@ void main() {
 
   group('StepUpChallenge wire shape', () {
     test('toJson exposes only public metadata — never the JWT', () {
-      // Reconstruct the way the iOS plugin would emit one. The
-      // wire shape MUST NOT carry a token or expiresAt; otherwise
-      // the bridge has regressed and the bearer challenge is
-      // observable from Dart land.
+      // Reconstruct the way the native plugins emit one. The wire
+      // shape MUST NOT carry a token or expiresAt; otherwise the
+      // bridge has regressed and the bearer challenge is observable
+      // from Dart land.
       final wire = {
         'status': 'continue',
         'challengeID': 'chal_abc',

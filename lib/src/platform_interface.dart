@@ -17,10 +17,10 @@ import 'types/user.dart';
 ///
 /// Every method takes the calling client's `handle` (a UUID
 /// minted by the Dart constructor) plus its config snapshot. The
-/// iOS plugin lazily creates a `PreludeSessionClient` per handle
-/// on first call and reuses it across subsequent calls — so DPoP
-/// keys, refresh tokens, and the access-token cache stay stable
-/// for the lifetime of the Dart instance.
+/// native plugin lazily creates a `PreludeSessionClient` per
+/// handle on first call and reuses it across subsequent calls —
+/// so DPoP keys, refresh tokens, and the access-token cache stay
+/// stable for the lifetime of the Dart instance.
 abstract class PreludeSessionClientPlatform extends PlatformInterface {
   PreludeSessionClientPlatform() : super(token: _token);
 
@@ -154,8 +154,9 @@ abstract class PreludeSessionClientPlatform extends PlatformInterface {
 }
 
 /// Snapshot of the [PreludeSessionClient] constructor args. Sent
-/// alongside every call so the iOS plugin can lazily construct
-/// the native client on first use without an explicit init step.
+/// alongside every call so the native plugin can lazily construct
+/// the underlying client on first use without an explicit init
+/// step.
 class ClientConfig {
   const ClientConfig({
     required this.endpoint,
