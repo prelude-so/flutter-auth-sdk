@@ -40,6 +40,10 @@ sealed class PreludeSessionException implements Exception {
         return MissingChallengeTokenException(message);
       case 'invalid_challenge_token':
         return InvalidChallengeTokenException(message);
+      case 'expired_challenge_token':
+        return ExpiredChallengeTokenException(message);
+      case 'token_reused':
+        return TokenReusedException(message);
       case 'invalid_otp_code':
         return InvalidOTPCodeException(message);
       case 'refresh_failed':
@@ -54,6 +58,10 @@ sealed class PreludeSessionException implements Exception {
         return ForbiddenException(message);
       case 'insufficient_scope':
         return InsufficientScopeException(message);
+      case 'not_found':
+        return NotFoundException(message);
+      case 'conflict':
+        return ConflictException(message);
       case 'network':
         return NetworkException(message);
     }
@@ -95,6 +103,22 @@ class InvalidChallengeTokenException extends PreludeSessionException {
   const InvalidChallengeTokenException(super.message);
   @override
   String get code => 'invalid_challenge_token';
+}
+
+/// Step-up challenge token exceeded its TTL. Recover via
+/// [PreludeSessionClient.requestStepUp].
+class ExpiredChallengeTokenException extends PreludeSessionException {
+  const ExpiredChallengeTokenException(super.message);
+  @override
+  String get code => 'expired_challenge_token';
+}
+
+/// Bearer token was already redeemed. Same recovery path as
+/// [ExpiredChallengeTokenException]: start a fresh challenge.
+class TokenReusedException extends PreludeSessionException {
+  const TokenReusedException(super.message);
+  @override
+  String get code => 'token_reused';
 }
 
 /// OTP code submitted during login was wrong or expired. Distinct
@@ -144,6 +168,22 @@ class InsufficientScopeException extends PreludeSessionException {
   const InsufficientScopeException(super.message);
   @override
   String get code => 'insufficient_scope';
+}
+
+/// Server returned 404 / not_found for the requested resource
+/// (e.g. revoking a session id that no longer exists).
+class NotFoundException extends PreludeSessionException {
+  const NotFoundException(super.message);
+  @override
+  String get code => 'not_found';
+}
+
+/// Server returned 409 / conflict (e.g. an identifier the caller
+/// is trying to claim is already taken).
+class ConflictException extends PreludeSessionException {
+  const ConflictException(super.message);
+  @override
+  String get code => 'conflict';
 }
 
 /// Transport / TLS / DNS failure.

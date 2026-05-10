@@ -15,6 +15,8 @@ void main() {
     ('internal_server_error', InternalServerErrorException),
     ('missing_challenge_token', MissingChallengeTokenException),
     ('invalid_challenge_token', InvalidChallengeTokenException),
+    ('expired_challenge_token', ExpiredChallengeTokenException),
+    ('token_reused', TokenReusedException),
     ('invalid_otp_code', InvalidOTPCodeException),
     ('refresh_failed', RefreshFailedException),
     ('timeout', TimeoutException),
@@ -22,6 +24,8 @@ void main() {
     ('invalid_password', InvalidPasswordException),
     ('forbidden', ForbiddenException),
     ('insufficient_scope', InsufficientScopeException),
+    ('not_found', NotFoundException),
+    ('conflict', ConflictException),
     ('network', NetworkException),
   ];
 

@@ -3,6 +3,8 @@ package so.prelude.fluttersessionsdk
 import so.prelude.android.session.LoginWithPasswordOptions
 import so.prelude.android.session.PreludeIdentifier
 import so.prelude.android.session.PreludeIdentifierType
+import so.prelude.android.session.PreludeListSessionsOptions
+import so.prelude.android.session.PreludeRevokeTarget
 import so.prelude.android.session.PreludeSessionError
 import so.prelude.android.session.RedactedString
 import so.prelude.android.session.StartOTPLoginOptions
@@ -19,6 +21,7 @@ internal data class ClientConfig(
     val baseUrl: URL,
     val hostOverride: String?,
     val timeout: Duration,
+    val signalsKeyOverride: String?,
 ) {
     companion object {
         /** Canonical Prelude API address; matches the iOS default. */
@@ -50,6 +53,11 @@ internal data class ClientConfig(
                 baseUrl = baseUrl,
                 hostOverride = raw["hostOverride"] as? String,
                 timeout = timeoutSecs.seconds,
+                // Empty string is treated as absent so a misconfigured
+                // Dart-side `String.fromEnvironment` doesn't construct
+                // a half-wired dispatcher.
+                signalsKeyOverride = (raw["signalsKeyOverride"] as? String)
+                    ?.takeIf { it.isNotBlank() },
             )
         }
     }
@@ -85,4 +93,50 @@ internal fun decodeLoginWithPasswordOptions(raw: Any?): LoginWithPasswordOptions
         identifier = email,
         password = RedactedString(password),
     )
+}
+
+/**
+ * `null` / missing options fall through to defaults so the server
+ * picks its own pagination — matching the Dart-side semantics.
+ */
+internal fun decodeListSessionsOptions(raw: Any?): PreludeListSessionsOptions {
+    val json = raw as? Map<*, *> ?: return PreludeListSessionsOptions()
+    return PreludeListSessionsOptions(
+        limit = (json["limit"] as? Number)?.toInt(),
+        offset = (json["offset"] as? Number)?.toInt(),
+    )
+}
+
+internal fun decodeRevokeTarget(raw: Any?): PreludeRevokeTarget {
+    val json = raw as? Map<*, *>
+        ?: throw decodeError("RevokeTarget: malformed payload")
+    return when (val kind = json["kind"] as? String) {
+        "all" -> PreludeRevokeTarget.All
+        "others" -> PreludeRevokeTarget.Others
+        "mine" -> PreludeRevokeTarget.Mine
+        "session" -> {
+            val id = json["sessionID"] as? String
+                ?: throw decodeError("RevokeTarget.session: missing sessionID")
+            PreludeRevokeTarget.Session(id)
+        }
+        else -> throw decodeError("Unknown RevokeTarget kind: $kind")
+    }
+}
+
+/**
+ * Optional `Map<String, String>` step-up audit metadata. Non-string
+ * keys / values surface as a typed decode error so a Dart-side
+ * mistake fails loudly instead of being silently dropped on the floor.
+ */
+internal fun decodeMetadata(raw: Any?): Map<String, String>? {
+    if (raw == null) return null
+    val map = raw as? Map<*, *>
+        ?: throw decodeError("metadata: expected map of String → String")
+    return map.entries.associate { (k, v) ->
+        val key = k as? String
+            ?: throw decodeError("metadata: non-string key")
+        val value = v as? String
+            ?: throw decodeError("metadata: non-string value for `$key`")
+        key to value
+    }
 }

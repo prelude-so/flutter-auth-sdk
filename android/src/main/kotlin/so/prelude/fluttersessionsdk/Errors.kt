@@ -51,6 +51,10 @@ private fun mapSessionError(error: PreludeSessionError): FlutterErrorPayload =
             FlutterErrorPayload("missing_challenge_token", error.message.orEmpty())
         is PreludeSessionError.InvalidChallengeToken ->
             FlutterErrorPayload("invalid_challenge_token", error.message.orEmpty())
+        is PreludeSessionError.ExpiredChallengeToken ->
+            FlutterErrorPayload("expired_challenge_token", error.message.orEmpty())
+        is PreludeSessionError.TokenReused ->
+            FlutterErrorPayload("token_reused", error.message.orEmpty())
         is PreludeSessionError.InvalidOTPCode ->
             FlutterErrorPayload("invalid_otp_code", error.message.orEmpty())
         is PreludeSessionError.RefreshFailed ->
@@ -65,6 +69,10 @@ private fun mapSessionError(error: PreludeSessionError): FlutterErrorPayload =
             FlutterErrorPayload("forbidden", error.message.orEmpty())
         is PreludeSessionError.InsufficientScope ->
             FlutterErrorPayload("insufficient_scope", error.message.orEmpty())
+        is PreludeSessionError.NotFound ->
+            FlutterErrorPayload("not_found", error.message.orEmpty())
+        is PreludeSessionError.Conflict ->
+            FlutterErrorPayload("conflict", error.message.orEmpty())
         is PreludeSessionError.Network ->
             FlutterErrorPayload("network", error.cause?.message ?: error.message.orEmpty())
         // Dart doesn't model these natively; surface through the

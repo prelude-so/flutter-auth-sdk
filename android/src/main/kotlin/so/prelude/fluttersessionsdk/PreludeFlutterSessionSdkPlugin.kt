@@ -1,8 +1,7 @@
 // PreludeFlutterSessionSdkPlugin
 //
 // Android plugin for the Flutter Session SDK. Bridges the Dart
-// `PreludeSessionClient` API onto the native `so.prelude.android:
-// session-sdk` `PreludeSessionClient` class.
+// `PreludeSessionClient` API onto the native session client.
 //
 // One Dart instance maps to one native client, looked up by the
 // per-instance handle string the Dart side stamps at construction.
