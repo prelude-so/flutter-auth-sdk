@@ -1,12 +1,7 @@
 // PreludeFlutterSessionSdkPlugin
 //
 // iOS plugin for the Flutter Session SDK. Bridges the Dart
-// `PreludeSessionClient` API onto the native `PreludeSession`
-// SDK's `PreludeSessionClient` value type.
-//
-// PreludeSession Swift sources are vendored into this Swift
-// module at install time by the podspec; see
-// `prelude_flutter_session_sdk.podspec` for the resolution rules.
+// `PreludeSessionClient` API onto the native session client.
 //
 // One Dart instance maps to one native client, looked up by the
 // per-instance handle string the Dart side stamps at construction.
@@ -29,7 +24,8 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
 
     /// Per-handle in-flight step-up challenges, keyed by
     /// (handle, challengeID). Filled by ``requestStepUp`` /
-    /// ``submitStepUpOTP`` when a challenge advances; cleared on
+    /// ``submitStepUpOTP`` when a challenge advances; read by
+    /// ``sendStepUpOTP`` to resolve the cached token; cleared on
     /// flow completion, on non-OTP errors, and on ``dispose``.
     /// The Dart-side `StepUpChallenge` carries only public
     /// metadata; the wire form maps back to the cached value
@@ -62,7 +58,9 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
         "startOTPLogin", "resendOTP", "checkOTP",
         "loginWithPassword", "passwordCompliancy", "changePassword",
         "refresh", "logout", "invalidateSession",
-        "requestStepUp", "submitStepUpOTP",
+        "listSessions", "revokeSessions",
+        "requestStepUp", "sendStepUpOTP", "submitStepUpOTP",
+        "getActiveStepUp",
         "getProfile", "getSessionID",
         "getAccessToken", "getAccessTokenExpiresAt",
     ]
@@ -101,12 +99,10 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
 
         // Resolve + dispatch run on the cooperative pool, not the
         // platform thread. `resolveClient` lazily provisions the
-        // native client on first use, which hits Keychain
-        // (`accessTokenCache.hydrate`) and, on the very first call
-        // per process, the Secure Enclave probe. Doing that work
-        // here would block the Flutter messenger thread; the
-        // hop is cheap insurance. Errors flow through the same
-        // `toFlutterError` path either way.
+        // native client on first use, which hits Keychain and, on
+        // the first call per process, the Secure Enclave probe.
+        // Doing that work here would block the Flutter messenger
+        // thread.
         Task {
             do {
                 let client = try resolveClient(handle: handle, configRaw: configRaw)
@@ -158,14 +154,28 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
         // process lifetime, so holding the serial queue across it
         // is cheap insurance. `DispatchQueue.sync` is `rethrows`,
         // so a throwing init still surfaces correctly to the caller.
-        return try registryQueue.sync {
+        // Decode + dispatcher creation outside the lock — both are
+        // pure functions of the call args, hold no Pod state, and
+        // don't depend on `registry`. Keeps the locked section
+        // small and side-steps closure-inference fragility around
+        // the protocol-typed `signalsDispatcher` parameter.
+        let config = try ClientConfig(decoding: configRaw)
+        let signalsKey = resolveSignalsSDKKey(
+            keyOverride: config.signalsKeyOverride
+        )
+        // Adapter no-ops when the key is nil, so we always pass
+        // it through. Hides the manifest / override choice from
+        // the session client.
+        let dispatcher: PreludeSignalsDispatcher =
+            FlutterPreludeSignalsAdapter(sdkKey: signalsKey)
+        return try registryQueue.sync { () throws -> PreludeSessionClient in
             if let existing = registry[handle] {
                 return existing
             }
-            let config = try ClientConfig(decoding: configRaw)
             let client = try PreludeSessionClient(
                 endpoint: config.endpoint,
                 hostOverride: config.hostOverride,
+                signalsDispatcher: dispatcher,
                 timeout: config.timeout,
                 allowInsecureTLS: config.allowInsecureTLS
             )
@@ -282,9 +292,8 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
         case "passwordCompliancy":
             let compliancy = try await client.passwordCompliancy()
             return Codec.encode(compliancy: compliancy)
-        // `validatePassword` is intentionally absent — Dart now
-        // classifies locally against the cached compliancy. The
-        // iOS path is unreachable from the bridge.
+        // `validatePassword` is intentionally absent — Dart
+        // classifies locally against the cached compliancy.
         case "changePassword":
             guard let newPassword = args["newPassword"] as? String else {
                 throw missingArgError(call.method, "newPassword")
@@ -303,14 +312,42 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
             try await client.invalidateSession()
             return nil
 
+        // Manage sessions ----------------------------------------
+        case "listSessions":
+            let options = try decodeListSessionsOptions(args["options"])
+            let response = try await client.listSessions(options)
+            return Codec.encode(listSessions: response)
+        case "revokeSessions":
+            let target = try decodeRevokeTarget(args["target"])
+            try await client.revokeSessions(target)
+            return nil
+
         // Step-up -------------------------------------------------
         case "requestStepUp":
             guard let scope = args["scope"] as? String else {
                 throw missingArgError(call.method, "scope")
             }
-            let challenge = try await client.requestStepUp(scope: scope)
+            let metadata = try decodeMetadata(args["metadata"])
+            let challenge = try await client.requestStepUp(
+                scope: scope,
+                metadata: metadata
+            )
             cacheChallenge(handle: handle, challenge: challenge)
             return Codec.encode(challenge: challenge)
+        case "getActiveStepUp":
+            guard let challenge = await client.activeStepUp else { return nil }
+            // Mirror into the per-handle cache so a follow-up
+            // `submitStepUpOTP` resolves the bearer challenge token
+            // without the caller needing to hold the handle locally.
+            cacheChallenge(handle: handle, challenge: challenge)
+            return Codec.encode(challenge: challenge)
+        case "sendStepUpOTP":
+            guard let challengeID = args["challengeID"] as? String else {
+                throw missingArgError(call.method, "challengeID")
+            }
+            let challenge = try lookupChallenge(handle: handle, challengeID: challengeID)
+            try await client.sendStepUpOTP(challenge)
+            return nil
         case "submitStepUpOTP":
             guard let challengeID = args["challengeID"] as? String,
                   let code = args["code"] as? String
@@ -380,6 +417,8 @@ private struct ClientConfig {
     let hostOverride: String?
     let timeout: TimeInterval
     let allowInsecureTLS: Bool
+    /// Dart-supplied override; nil falls back to `Info.plist`.
+    let signalsKeyOverride: String?
 
     init(decoding raw: [String: Any]) throws {
         guard let endpointRaw = raw["endpoint"] as? [String: Any] else {
@@ -406,7 +445,31 @@ private struct ClientConfig {
             self.timeout = 10.0
         }
         self.allowInsecureTLS = (raw["allowInsecureTLS"] as? Bool) ?? false
+        // Empty string is treated as absent so a misconfigured
+        // Dart-side `String.fromEnvironment` doesn't construct a
+        // half-wired dispatcher.
+        if let override = raw["signalsKeyOverride"] as? String, !override.isEmpty {
+            self.signalsKeyOverride = override
+        } else {
+            self.signalsKeyOverride = nil
+        }
     }
+}
+
+/// Resolve the Prelude signals SDK key for this process.
+///
+/// Precedence: Dart-supplied overrideKey > `Info.plist` `PreludeSDKKey`.
+/// Empty strings are treated as "not configured" so accidentally
+/// shipping an empty plist entry doesn't construct a half-wired
+/// dispatcher. Returning `nil` here is a supported no-op — signals
+/// just don't dispatch and `dispatch_id` is omitted from login
+/// bodies.
+private func resolveSignalsSDKKey(keyOverride: String?) -> String? {
+    if let keyOverride, !keyOverride.isEmpty { return keyOverride }
+    let plistValue = Bundle.main.object(
+        forInfoDictionaryKey: "PreludeSDKKey"
+    ) as? String
+    return (plistValue?.isEmpty == false) ? plistValue : nil
 }
 
 private func decodeStartOTPLoginOptions(_ raw: Any?) throws -> StartOTPLoginOptions {
@@ -423,6 +486,56 @@ private func decodeStartOTPLoginOptions(_ raw: Any?) throws -> StartOTPLoginOpti
     let identifier = PreludeIdentifier(type: type, value: value)
     let loginConfigID = json["loginConfigID"] as? String
     return StartOTPLoginOptions(identifier: identifier, loginConfigID: loginConfigID)
+}
+
+private func decodeListSessionsOptions(_ raw: Any?) throws -> ListSessionsOptions {
+    // Empty / nil maps fall through to ListSessionsOptions() so the
+    // server's defaults apply without a Dart-side change.
+    let json = (raw as? [String: Any]) ?? [:]
+    let limit = json["limit"] as? Int
+    let offset = json["offset"] as? Int
+    return ListSessionsOptions(limit: limit, offset: offset)
+}
+
+private func decodeRevokeTarget(_ raw: Any?) throws -> RevokeTarget {
+    guard let json = raw as? [String: Any],
+          let kind = json["kind"] as? String
+    else {
+        throw decodeError("RevokeTarget: malformed payload")
+    }
+    switch kind {
+    case "all": return .all
+    case "others": return .others
+    case "mine": return .mine
+    case "session":
+        guard let id = json["sessionID"] as? String else {
+            throw decodeError("RevokeTarget.session: missing sessionID")
+        }
+        return .session(id: id)
+    default:
+        throw decodeError("Unknown RevokeTarget kind: \(kind)")
+    }
+}
+
+/// Optional `[String: String]` step-up audit metadata. The
+/// standard channel codec types maps as `[AnyHashable: Any]` so a
+/// direct `as? [String: String]` cast can drop intent silently —
+/// validate every key/value individually instead.
+private func decodeMetadata(_ raw: Any?) throws -> [String: String]? {
+    if raw is NSNull { return nil }
+    guard let any = raw else { return nil }
+    guard let map = any as? [String: Any] else {
+        throw decodeError("metadata: expected map of String → String")
+    }
+    var out: [String: String] = [:]
+    out.reserveCapacity(map.count)
+    for (key, value) in map {
+        guard let str = value as? String else {
+            throw decodeError("metadata: non-string value for `\(key)`")
+        }
+        out[key] = str
+    }
+    return out
 }
 
 private func decodeLoginWithPasswordOptions(_ raw: Any?) throws -> LoginWithPasswordOptions {
@@ -478,6 +591,31 @@ private enum Codec {
         ]
     }
 
+    static func encode(sessionView v: PreludeSessionView) -> [String: Any] {
+        // Timestamps are server-provided ISO 8601 strings on the
+        // iOS SDK; pass them through `.isoString` to validate and
+        // re-emit in canonical form before they cross the channel.
+        [
+            "id": v.id,
+            "deviceModel": v.deviceModel,
+            "deviceType": v.deviceType.rawValue,
+            "osVersion": v.osVersion,
+            "countryCode": v.countryCode,
+            "createdAt": v.createdAt.isoString,
+            "lastSeenAt": v.lastSeenAt.isoString,
+            "expiresAt": v.expiresAt.isoString,
+        ]
+    }
+
+    static func encode(listSessions r: ListSessionsResponse) -> [String: Any] {
+        [
+            "sessions": r.sessions.map { encode(sessionView: $0) },
+            "total": r.total,
+            "limit": r.limit,
+            "offset": r.offset,
+        ]
+    }
+
     /// Encode the public-surface fields only. The challenge token
     /// and expiry stay in the plugin's per-handle cache so the
     /// bearer credential never crosses the channel. See
@@ -512,6 +650,41 @@ private enum Codec {
         case .null:
             return ["kind": "null"]
         }
+    }
+}
+
+// MARK: - ISO 8601 normalization
+
+/// `ISO8601DateFormatter` is the canonical Foundation formatter; we
+/// instantiate two variants because the server can emit timestamps
+/// with or without fractional seconds and a single formatter only
+/// accepts one shape at a time.
+private let iso8601WithFraction: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()
+
+private let iso8601Plain: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f
+}()
+
+private extension String {
+    /// Defensive ISO 8601 normalization. Parses with either fractional
+    /// or plain ISO 8601 and re-emits in canonical fractional form.
+    /// Falls back to `self` when parsing fails so a malformed
+    /// timestamp surfaces as a structured `ArgumentError` on the
+    /// Dart side instead of being silently rewritten here.
+    var isoString: String {
+        if let d = iso8601WithFraction.date(from: self) {
+            return iso8601WithFraction.string(from: d)
+        }
+        if let d = iso8601Plain.date(from: self) {
+            return iso8601WithFraction.string(from: d)
+        }
+        return self
     }
 }
 
@@ -568,6 +741,10 @@ private func mapSessionError(_ error: PreludeSessionError) -> FlutterError {
         return FlutterError(code: "missing_challenge_token", message: m, details: nil)
     case .invalidChallengeToken(let m):
         return FlutterError(code: "invalid_challenge_token", message: m, details: nil)
+    case .expiredChallengeToken(let m):
+        return FlutterError(code: "expired_challenge_token", message: m, details: nil)
+    case .tokenReused(let m):
+        return FlutterError(code: "token_reused", message: m, details: nil)
     case .invalidOTPCode(let m):
         return FlutterError(code: "invalid_otp_code", message: m, details: nil)
     case .refreshFailed(let m):
@@ -582,6 +759,10 @@ private func mapSessionError(_ error: PreludeSessionError) -> FlutterError {
         return FlutterError(code: "forbidden", message: m, details: nil)
     case .insufficientScope(let m):
         return FlutterError(code: "insufficient_scope", message: m, details: nil)
+    case .notFound(let m):
+        return FlutterError(code: "not_found", message: m, details: nil)
+    case .conflict(let m):
+        return FlutterError(code: "conflict", message: m, details: nil)
     case .network(let underlying):
         return FlutterError(
             code: "network",

@@ -1,10 +1,7 @@
 /// Prelude Flutter Session SDK.
 ///
-/// Public Dart API surface for the Prelude session-based
-/// authentication SDK. Bridges to the native iOS
-/// (`PreludeSessionClient` in `PreludeSession`) and Android
-/// (`PreludeSessionClient` in `so.prelude.android:session-sdk`)
-/// session SDKs.
+/// Public Dart API surface for Prelude session-based
+/// authentication on iOS and Android.
 library;
 
 export 'src/client.dart' show PreludeSessionClient;
@@ -13,6 +10,8 @@ export 'src/types/endpoint.dart' show Endpoint;
 export 'src/types/errors.dart'
     show
         BadRequestException,
+        ConflictException,
+        ExpiredChallengeTokenException,
         ForbiddenException,
         InsufficientScopeException,
         InternalServerErrorException,
@@ -22,11 +21,13 @@ export 'src/types/errors.dart'
         InvalidPasswordException,
         MissingChallengeTokenException,
         NetworkException,
+        NotFoundException,
         PreludeSessionException,
         PreludeSessionGenericException,
         RateLimitedException,
         RefreshFailedException,
         TimeoutException,
+        TokenReusedException,
         UnauthorizedException;
 export 'src/types/identifier.dart'
     show PreludeIdentifier, PreludeIdentifierType;
@@ -50,5 +51,12 @@ export 'src/types/password.dart'
         PreludePasswordCompliancyResults;
 export 'src/types/profile.dart' show PreludeProfile;
 export 'src/types/redacted_string.dart' show RedactedString;
+export 'src/types/sessions.dart'
+    show
+        PreludeDeviceType,
+        PreludeListSessionsOptions,
+        PreludeListSessionsResponse,
+        PreludeRevokeTarget,
+        PreludeSessionView;
 export 'src/types/step_up.dart' show StepUpChallenge, StepUpStatus;
 export 'src/types/user.dart' show PreludeUser;

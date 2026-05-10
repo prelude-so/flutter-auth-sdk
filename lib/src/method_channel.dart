@@ -7,6 +7,7 @@ import 'types/otp.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
 import 'types/redacted_string.dart';
+import 'types/sessions.dart';
 import 'types/step_up.dart';
 import 'types/user.dart';
 
@@ -35,8 +36,7 @@ class MethodChannelPreludeSessionClient extends PreludeSessionClientPlatform {
   /// session-API failure (the native plugin either returns the
   /// encoded value or surfaces a `PlatformException`). It surfaces
   /// as a [StateError] so consumers catching [PreludeSessionException]
-  /// to handle expected API failures don't accidentally swallow
-  /// internal bridge bugs.
+  /// don't accidentally swallow it.
   Future<Map<Object?, Object?>> _invokeMap(
     String method,
     Map<String, Object?> args,
@@ -45,8 +45,7 @@ class MethodChannelPreludeSessionClient extends PreludeSessionClientPlatform {
     if (raw == null) {
       throw StateError(
         'PreludeSession bridge returned null for `$method`; '
-        'expected a non-null map. This is a bridge bug — please '
-        'file an issue with the call site.',
+        'expected a non-null map.',
       );
     }
     return raw;
@@ -162,16 +161,58 @@ class MethodChannelPreludeSessionClient extends PreludeSessionClientPlatform {
   }
 
   @override
+  Future<PreludeListSessionsResponse> listSessions({
+    required String handle,
+    required ClientConfig config,
+    required PreludeListSessionsOptions options,
+  }) async {
+    final raw = await _invokeMap('listSessions', {
+      ..._baseArgs(handle, config),
+      'options': options.toJson(),
+    });
+    return PreludeListSessionsResponse.fromJson(raw);
+  }
+
+  @override
+  Future<void> revokeSessions({
+    required String handle,
+    required ClientConfig config,
+    required PreludeRevokeTarget target,
+  }) async {
+    await _invoke<void>('revokeSessions', {
+      ..._baseArgs(handle, config),
+      'target': target.toJson(),
+    });
+  }
+
+  @override
   Future<StepUpChallenge> requestStepUp({
     required String handle,
     required ClientConfig config,
     required String scope,
+    Map<String, String>? metadata,
   }) async {
     final raw = await _invokeMap('requestStepUp', {
       ..._baseArgs(handle, config),
       'scope': scope,
+      'metadata': ?metadata,
     });
     return StepUpChallenge.fromJson(raw);
+  }
+
+  @override
+  Future<void> sendStepUpOTP({
+    required String handle,
+    required ClientConfig config,
+    required StepUpChallenge challenge,
+  }) async {
+    // Only the [challengeID] travels over the channel; the token
+    // + expiry live in the native plugin's per-handle cache. The
+    // bridge resolves them via [challengeID] before firing /otp.
+    await _invoke<void>('sendStepUpOTP', {
+      ..._baseArgs(handle, config),
+      'challengeID': challenge.challengeID,
+    });
   }
 
   @override
@@ -191,6 +232,18 @@ class MethodChannelPreludeSessionClient extends PreludeSessionClientPlatform {
     });
     if (raw == null) return null;
     return StepUpChallenge.fromJson(raw);
+  }
+
+  @override
+  Future<StepUpChallenge?> getActiveStepUp({
+    required String handle,
+    required ClientConfig config,
+  }) async {
+    final raw = await _invoke<Map<Object?, Object?>>(
+      'getActiveStepUp',
+      _baseArgs(handle, config),
+    );
+    return raw == null ? null : StepUpChallenge.fromJson(raw);
   }
 
   @override

@@ -1,16 +1,21 @@
 package so.prelude.fluttersessionsdk
 
 import io.flutter.plugin.common.MethodCall
+import so.prelude.android.session.PreludeListSessionsOptions
+import so.prelude.android.session.PreludeRevokeTarget
 import so.prelude.android.session.PreludeSessionClient
 import so.prelude.android.session.PreludeSessionError
 import so.prelude.android.session.RedactedString
 import so.prelude.android.session.changePassword
 import so.prelude.android.session.checkOTP
 import so.prelude.android.session.getPasswordCompliancy
+import so.prelude.android.session.listSessions
 import so.prelude.android.session.loginWithPassword
 import so.prelude.android.session.logout
 import so.prelude.android.session.requestStepUp
-import so.prelude.android.session.retryOTP
+import so.prelude.android.session.resendOTP
+import so.prelude.android.session.revokeSessions
+import so.prelude.android.session.sendStepUpOTP
 import so.prelude.android.session.startOTPLogin
 import so.prelude.android.session.submitStepUpOTP
 
@@ -21,7 +26,9 @@ internal val ASYNC_METHODS: Set<String> = setOf(
     "startOTPLogin", "resendOTP", "checkOTP",
     "loginWithPassword", "passwordCompliancy", "changePassword",
     "refresh", "logout", "invalidateSession",
-    "requestStepUp", "submitStepUpOTP",
+    "listSessions", "revokeSessions",
+    "requestStepUp", "sendStepUpOTP", "submitStepUpOTP",
+    "getActiveStepUp",
     "getProfile", "getSessionID",
     "getAccessToken", "getAccessTokenExpiresAt",
 )
@@ -45,7 +52,7 @@ internal suspend fun dispatch(
         null
     }
     "resendOTP" -> {
-        client.retryOTP()
+        client.resendOTP()
         null
     }
     "checkOTP" -> {
@@ -82,14 +89,32 @@ internal suspend fun dispatch(
         null
     }
 
+    // Manage sessions -----------------------------------------
+    "listSessions" -> Codec.encodeListSessions(
+        client.listSessions(decodeListSessionsOptions(args["options"])),
+    )
+    "revokeSessions" -> {
+        client.revokeSessions(decodeRevokeTarget(args["target"]))
+        null
+    }
+
     // Step-up -------------------------------------------------
     "requestStepUp" -> {
         val scopeArg = args["scope"] as? String ?: throw missingArg("requestStepUp", "scope")
-        val challenge = client.requestStepUp(scopeArg)
+        val metadata = decodeMetadata(args["metadata"])
+        val challenge = client.requestStepUp(scopeArg, metadata)
         registry.cacheChallenge(handle, challenge)
         Codec.encodeChallenge(challenge)
     }
+    "sendStepUpOTP" -> handleSendStepUpOTP(args, handle, client, registry)
     "submitStepUpOTP" -> handleSubmitStepUpOTP(args, handle, client, registry)
+    "getActiveStepUp" -> client.activeStepUp?.let {
+        // Mirror into the per-handle cache so a follow-up
+        // `submitStepUpOTP` resolves the bearer challenge token
+        // without the caller needing to hold the handle locally.
+        registry.cacheChallenge(handle, it)
+        Codec.encodeChallenge(it)
+    }
 
     // Cached readers ------------------------------------------
     "getProfile" -> client.getProfile()?.let { Codec.encodeProfile(it) }
@@ -101,6 +126,19 @@ internal suspend fun dispatch(
     // If you add a new async method, also add it to the allowlist
     // *and* a branch here.
     else -> throw decodeError("dispatch: unhandled method `${call.method}`")
+}
+
+private suspend fun handleSendStepUpOTP(
+    args: Map<*, *>,
+    handle: String,
+    client: PreludeSessionClient,
+    registry: ClientRegistry,
+): Any? {
+    val challengeId = args["challengeID"] as? String
+        ?: throw missingArg("sendStepUpOTP", "challengeID")
+    val challenge = registry.lookupChallenge(handle, challengeId)
+    client.sendStepUpOTP(challenge)
+    return null
 }
 
 private suspend fun handleSubmitStepUpOTP(

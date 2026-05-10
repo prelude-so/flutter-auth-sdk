@@ -218,6 +218,128 @@ void main() {
     });
   });
 
+  group('PreludeSessionView', () {
+    test('decodes the wire shape native plugins emit', () {
+      final wire = {
+        'id': 'ses_abc',
+        'deviceModel': 'iPhone 15 Pro',
+        'deviceType': 'mobile',
+        'osVersion': 'iOS 17.2',
+        'countryCode': 'SE',
+        'createdAt': '2026-05-01T10:00:00Z',
+        'lastSeenAt': '2026-05-04T11:30:00Z',
+        'expiresAt': '2026-06-01T10:00:00Z',
+      };
+      final v = PreludeSessionView.fromJson(wire);
+
+      expect(v.id, 'ses_abc');
+      expect(v.deviceType, PreludeDeviceType.mobile);
+      expect(v.createdAt.isUtc, isTrue);
+      expect(v.createdAt, DateTime.utc(2026, 5, 1, 10));
+      expect(v.expiresAt, DateTime.utc(2026, 6, 1, 10));
+    });
+
+    test('unknown deviceType folds into PreludeDeviceType.unknown', () {
+      final v = PreludeSessionView.fromJson({
+        'id': 'x',
+        'deviceModel': '',
+        'deviceType': 'smart_fridge',
+        'osVersion': '',
+        'countryCode': '',
+        'createdAt': '2026-01-01T00:00:00Z',
+        'lastSeenAt': '2026-01-01T00:00:00Z',
+        'expiresAt': '2026-01-01T00:00:00Z',
+      });
+      expect(v.deviceType, PreludeDeviceType.unknown);
+    });
+
+    test('rejects malformed timestamps with ArgumentError', () {
+      expect(
+        () => PreludeSessionView.fromJson({
+          'id': 'x',
+          'deviceModel': '',
+          'deviceType': 'mobile',
+          'osVersion': '',
+          'countryCode': '',
+          'createdAt': 'not a date',
+          'lastSeenAt': '2026-01-01T00:00:00Z',
+          'expiresAt': '2026-01-01T00:00:00Z',
+        }),
+        throwsArgumentError,
+      );
+    });
+  });
+
+  group('PreludeListSessionsResponse', () {
+    test('decodes nested sessions and paging', () {
+      final wire = {
+        'sessions': [
+          {
+            'id': 'ses_1',
+            'deviceModel': 'Pixel 8',
+            'deviceType': 'mobile',
+            'osVersion': 'Android 14',
+            'countryCode': 'US',
+            'createdAt': '2026-01-01T00:00:00Z',
+            'lastSeenAt': '2026-01-02T00:00:00Z',
+            'expiresAt': '2026-02-01T00:00:00Z',
+          },
+        ],
+        'total': 1,
+        'limit': 25,
+        'offset': 0,
+      };
+      final r = PreludeListSessionsResponse.fromJson(wire);
+      expect(r.sessions.single.id, 'ses_1');
+      expect(r.total, 1);
+      expect(r.limit, 25);
+      expect(r.offset, 0);
+    });
+  });
+
+  group('PreludeRevokeTarget wire shape', () {
+    test('toJson matches the kinds the native plugins decode', () {
+      expect(PreludeRevokeTarget.all.toJson(), {'kind': 'all'});
+      expect(PreludeRevokeTarget.others.toJson(), {'kind': 'others'});
+      expect(PreludeRevokeTarget.mine.toJson(), {'kind': 'mine'});
+      expect(
+        PreludeRevokeTarget.session('ses_42').toJson(),
+        {'kind': 'session', 'sessionID': 'ses_42'},
+      );
+    });
+  });
+
+  group('PreludeListSessionsOptions', () {
+    test('only includes set fields on the wire', () {
+      expect(PreludeListSessionsOptions().toJson(), isEmpty);
+      expect(
+        PreludeListSessionsOptions(limit: 50).toJson(),
+        {'limit': 50},
+      );
+      expect(
+        PreludeListSessionsOptions(offset: 25).toJson(),
+        {'offset': 25},
+      );
+      expect(
+        PreludeListSessionsOptions(limit: 50, offset: 25).toJson(),
+        {'limit': 50, 'offset': 25},
+      );
+    });
+
+    test('rejects negative limit / offset in all build modes', () {
+      // Explicit throw (not `assert`) so the check survives release
+      // builds.
+      expect(
+        () => PreludeListSessionsOptions(limit: -1),
+        throwsArgumentError,
+      );
+      expect(
+        () => PreludeListSessionsOptions(offset: -1),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('StepUpChallenge wire shape', () {
     test('toJson exposes only public metadata — never the JWT', () {
       // Reconstruct the way the native plugins emit one. The wire

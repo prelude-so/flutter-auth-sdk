@@ -6,6 +6,7 @@ import 'types/otp.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
 import 'types/redacted_string.dart';
+import 'types/sessions.dart';
 import 'types/step_up.dart';
 import 'types/user.dart';
 
@@ -112,6 +113,22 @@ abstract class PreludeSessionClientPlatform extends PlatformInterface {
   });
 
   // ------------------------------------------------------------
+  // Manage sessions (list / revoke)
+  // ------------------------------------------------------------
+
+  Future<PreludeListSessionsResponse> listSessions({
+    required String handle,
+    required ClientConfig config,
+    required PreludeListSessionsOptions options,
+  });
+
+  Future<void> revokeSessions({
+    required String handle,
+    required ClientConfig config,
+    required PreludeRevokeTarget target,
+  });
+
+  // ------------------------------------------------------------
   // Step-up
   // ------------------------------------------------------------
 
@@ -119,6 +136,13 @@ abstract class PreludeSessionClientPlatform extends PlatformInterface {
     required String handle,
     required ClientConfig config,
     required String scope,
+    Map<String, String>? metadata,
+  });
+
+  Future<void> sendStepUpOTP({
+    required String handle,
+    required ClientConfig config,
+    required StepUpChallenge challenge,
   });
 
   Future<StepUpChallenge?> submitStepUpOTP({
@@ -126,6 +150,11 @@ abstract class PreludeSessionClientPlatform extends PlatformInterface {
     required ClientConfig config,
     required StepUpChallenge challenge,
     required String code,
+  });
+
+  Future<StepUpChallenge?> getActiveStepUp({
+    required String handle,
+    required ClientConfig config,
   });
 
   // ------------------------------------------------------------
@@ -163,6 +192,7 @@ class ClientConfig {
     required this.hostOverride,
     required this.timeoutSeconds,
     required this.allowInsecureTLS,
+    this.signalsKeyOverride,
   });
 
   final Endpoint endpoint;
@@ -170,10 +200,18 @@ class ClientConfig {
   final double timeoutSeconds;
   final bool allowInsecureTLS;
 
+  /// Optional Prelude signals SDK key. When non-null, the native
+  /// plugin uses this in place of the platform-manifest entry
+  /// (`PreludeSDKKey` on iOS, `so.prelude.sdk_key` on Android).
+  /// Null is the common case — keys belong in the manifest so
+  /// they don't leak across platform bundles.
+  final String? signalsKeyOverride;
+
   Map<String, Object?> toJson() => {
     'endpoint': endpoint.toJson(),
     'hostOverride': hostOverride,
     'timeoutSeconds': timeoutSeconds,
     'allowInsecureTLS': allowInsecureTLS,
+    'signalsKeyOverride': signalsKeyOverride,
   };
 }

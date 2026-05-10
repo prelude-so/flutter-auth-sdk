@@ -1,10 +1,40 @@
 package so.prelude.fluttersessionsdk
 
 import android.content.Context
+import android.content.pm.PackageManager
 import so.prelude.android.session.PreludeSessionClient
 import so.prelude.android.session.PreludeSessionError
 import so.prelude.android.session.PreludeStepUpChallenge
 import so.prelude.android.session.PreludeStepUpStatus
+
+/**
+ * `AndroidManifest.xml` meta-data key the SDK reads for the
+ * platform's Prelude signals SDK key. Symmetric with the iOS
+ * plugin's `Info.plist` `PreludeSDKKey` lookup.
+ */
+private const val MANIFEST_SDK_KEY = "so.prelude.sdk_key"
+
+/**
+ * Resolve the Prelude signals SDK key for this app.
+ *
+ * Precedence: Dart-supplied override > manifest meta-data. Empty
+ * strings are treated as absent so an unconfigured manifest entry
+ * doesn't construct a half-wired dispatcher. Returning `null` is
+ * a supported no-op — signals just don't dispatch and `dispatch_id`
+ * is omitted from login bodies.
+ */
+internal fun resolveSignalsSDKKey(context: Context, override: String?): String? {
+    if (!override.isNullOrBlank()) return override
+    return try {
+        val info = context.packageManager.getApplicationInfo(
+            context.packageName,
+            PackageManager.GET_META_DATA,
+        )
+        info.metaData?.getString(MANIFEST_SDK_KEY)?.takeIf { it.isNotBlank() }
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+}
 
 /**
  * Per-handle native client cache plus per-handle in-flight step-up
@@ -35,11 +65,17 @@ internal class ClientRegistry {
         synchronized(lock) {
             clients[handle]?.let { return@synchronized it }
             val config = ClientConfig.decode(configRaw)
+            val signalsKey = resolveSignalsSDKKey(context, config.signalsKeyOverride)
+            // Adapter no-ops when `sdkKey` is null, so we always
+            // pass it in. Hides the manifest / override decision
+            // from the session client.
+            val dispatcher = PreludeSignalsAdapter(context, signalsKey)
             val client = PreludeSessionClient(
                 context = context,
                 baseUrl = config.baseUrl,
                 hostOverride = config.hostOverride,
                 timeout = config.timeout,
+                signalsDispatcher = dispatcher,
             )
             clients[handle] = client
             client

@@ -1,10 +1,13 @@
 package so.prelude.fluttersessionsdk
 
 import so.prelude.android.session.PreludeJSONValue
+import so.prelude.android.session.PreludeListSessionsResponse
 import so.prelude.android.session.PreludePasswordCompliancy
 import so.prelude.android.session.PreludeProfile
+import so.prelude.android.session.PreludeSessionView
 import so.prelude.android.session.PreludeStepUpChallenge
 import so.prelude.android.session.PreludeUser
+import java.time.format.DateTimeFormatter
 
 /** Encodes native value types into Dart-friendly maps. */
 internal object Codec {
@@ -32,6 +35,29 @@ internal object Codec {
             "lowercase" to c.lowercase,
             "numbers" to c.numbers,
             "symbols" to c.symbols,
+        )
+
+    fun encodeSessionView(v: PreludeSessionView): Map<String, Any?> =
+        mapOf(
+            "id" to v.id,
+            "deviceModel" to v.deviceModel,
+            "deviceType" to v.deviceType.wireValue,
+            "osVersion" to v.osVersion,
+            "countryCode" to v.countryCode,
+            // Round-trip as ISO 8601 UTC strings — matches what the
+            // iOS bridge ships and what `DateTime.parse` expects on
+            // the Dart side.
+            "createdAt" to DateTimeFormatter.ISO_INSTANT.format(v.createdAt),
+            "lastSeenAt" to DateTimeFormatter.ISO_INSTANT.format(v.lastSeenAt),
+            "expiresAt" to DateTimeFormatter.ISO_INSTANT.format(v.expiresAt),
+        )
+
+    fun encodeListSessions(r: PreludeListSessionsResponse): Map<String, Any?> =
+        mapOf(
+            "sessions" to r.sessions.map { encodeSessionView(it) },
+            "total" to r.total,
+            "limit" to r.limit,
+            "offset" to r.offset,
         )
 
     /**

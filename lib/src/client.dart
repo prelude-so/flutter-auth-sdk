@@ -6,20 +6,16 @@ import 'types/otp.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
 import 'types/redacted_string.dart';
+import 'types/sessions.dart';
 import 'types/step_up.dart';
 import 'types/user.dart';
 
 /// Client for the Prelude Session API on Flutter.
 ///
-/// Bridges to the native iOS (`PreludeSessionClient` in
-/// `PreludeSession`) and Android (`PreludeSessionClient` in
-/// `so.prelude.android:session-sdk`) session SDKs and surfaces their
-/// public API through a single Dart entry point.
-///
 /// Each Dart instance owns a distinct logical session: the SDK
 /// stamps an opaque handle at construction time and forwards it
 /// with every method call. The native plugin lazily creates one
-/// `PreludeSessionClient` per handle on first use and reuses it,
+/// session client per handle on first use and reuses it,
 /// so per-instance state — DPoP keys, refresh tokens,
 /// access-token caches — stays stable across calls.
 ///
@@ -45,17 +41,29 @@ class PreludeSessionClient {
   ///
   /// [allowInsecureTLS] tells the native client to trust every
   /// server cert. Local development only — never ship `true`.
+  ///
+  /// [signalsKeyOverride] forces a specific Prelude signals SDK
+  /// key for this client, bypassing the platform manifest. The
+  /// default path is to leave this `null` and configure the key
+  /// per-platform: `PreludeSDKKey` in `Info.plist` on iOS,
+  /// `<meta-data android:name="so.prelude.sdk_key">` in
+  /// `AndroidManifest.xml` on Android — that way the iOS key
+  /// can't ship in an Android build, and vice versa. The override
+  /// is for runtime-fetched config (CI, white-label) where a
+  /// Dart-side string is genuinely the right shape.
   PreludeSessionClient({
     Endpoint endpoint = Endpoint.defaultEndpoint,
     String? hostOverride,
     Duration timeout = const Duration(seconds: 10),
     bool allowInsecureTLS = false,
+    String? signalsKeyOverride,
   }) : _config = ClientConfig(
          endpoint: endpoint,
          hostOverride: hostOverride,
          timeoutSeconds:
              timeout.inMicroseconds / Duration.microsecondsPerSecond,
          allowInsecureTLS: allowInsecureTLS,
+         signalsKeyOverride: signalsKeyOverride,
        );
 
   /// Opaque per-instance handle, stable for the lifetime of this
@@ -262,24 +270,104 @@ class PreludeSessionClient {
   }
 
   // ------------------------------------------------------------
+  // Manage sessions (list / revoke)
+  // ------------------------------------------------------------
+
+  /// Fetch a page of active sessions for the authenticated user.
+  /// Both [PreludeListSessionsOptions.limit] and
+  /// [PreludeListSessionsOptions.offset] are optional — the server
+  /// applies its own defaults when absent so a default change lands
+  /// without a client release.
+  Future<PreludeListSessionsResponse> listSessions([
+    PreludeListSessionsOptions? options,
+  ]) {
+    _ensureNotDisposed();
+    return _platform.listSessions(
+      handle: _handle,
+      config: _config,
+      options: options ?? PreludeListSessionsOptions(),
+    );
+  }
+
+  /// Revoke one or more of the authenticated user's sessions.
+  ///
+  /// When [target] kills the calling session
+  /// ([PreludeRevokeTarget.all], [PreludeRevokeTarget.mine], or a
+  /// [PreludeRevokeTarget.session] whose id matches the cached
+  /// session), the native SDK additionally wipes the per-domain
+  /// credential stores — same wipe [logout] performs — so a stale
+  /// refresh can't resurrect them.
+  Future<void> revokeSessions(PreludeRevokeTarget target) {
+    _ensureNotDisposed();
+    return _platform.revokeSessions(
+      handle: _handle,
+      config: _config,
+      target: target,
+    );
+  }
+
+  // ------------------------------------------------------------
   // Step-up
   // ------------------------------------------------------------
 
   /// Request a step-up to [scope]. Returns the challenge handle —
-  /// pass it back to [submitStepUpOTP] together with the OTP code.
-  Future<StepUpChallenge> requestStepUp({required String scope}) {
+  /// pass it to [sendStepUpOTP] to trigger code delivery, then to
+  /// [submitStepUpOTP] together with the OTP code.
+  ///
+  /// This call never fires `POST /otp` itself, so callers driving
+  /// a "resend code" button or a multi-screen UI keep full control
+  /// over delivery timing.
+  ///
+  /// [metadata] is forwarded verbatim to the server's step-up audit
+  /// hook. Server caps apply (max 5 keys, 12-char keys, 32-char
+  /// values); a violation surfaces as [BadRequestException].
+  Future<StepUpChallenge> requestStepUp({
+    required String scope,
+    Map<String, String>? metadata,
+  }) {
     _ensureNotDisposed();
     return _platform.requestStepUp(
       handle: _handle,
       config: _config,
       scope: scope,
+      metadata: metadata,
+    );
+  }
+
+  /// Most recent in-flight step-up challenge for this client, or
+  /// `null` if none. Mirrors the native accessor — useful for UIs
+  /// that resume a step-up flow across screens without threading
+  /// the [StepUpChallenge] handle through their state.
+  Future<StepUpChallenge?> getActiveStepUp() {
+    _ensureNotDisposed();
+    return _platform.getActiveStepUp(handle: _handle, config: _config);
+  }
+
+  /// Trigger OTP delivery (`POST /otp`) for an in-flight step-up
+  /// [challenge].
+  ///
+  /// Call this when [challenge.currentStep] is an OTP-delivery
+  /// step (`verify_email` / `verify_sms`) so the user receives the
+  /// code. Caller-driven on purpose: the UI decides when delivery
+  /// fires.
+  ///
+  /// Throws an [InvalidChallengeTokenException] if [challenge] is
+  /// blocked (carries no token).
+  Future<void> sendStepUpOTP(StepUpChallenge challenge) {
+    _ensureNotDisposed();
+    return _platform.sendStepUpOTP(
+      handle: _handle,
+      config: _config,
+      challenge: challenge,
     );
   }
 
   /// Submit an OTP [code] for [challenge]. Returns the next
   /// challenge for multi-step flows, or `null` when the flow has
   /// completed and the session has been refreshed with the
-  /// granted scope.
+  /// granted scope. For a multi-step flow whose next step is also
+  /// OTP delivery, the caller must invoke [sendStepUpOTP] on the
+  /// returned challenge to trigger the next code.
   Future<StepUpChallenge?> submitStepUpOTP(
     StepUpChallenge challenge,
     String code,
