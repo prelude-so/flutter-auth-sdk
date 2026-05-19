@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
-import 'package:prelude_flutter_session_sdk/src/platform_interface.dart';
+import 'package:prelude_flutter_auth_sdk/prelude_flutter_auth_sdk.dart';
+import 'package:prelude_flutter_auth_sdk/src/platform_interface.dart';
 
-/// Tests the Dart-only behaviour of [PreludeSessionClient] —
+/// Tests the Dart-only behaviour of [PreludeAuthClient] —
 /// dispose lifecycle, the local short-circuit for
 /// `validatePassword`, and the per-instance handle plumbing.
 /// The native plugin is replaced with a recording fake so every
@@ -15,12 +15,12 @@ void main() {
 
   setUp(() {
     fake = _RecordingPlatform();
-    PreludeSessionClientPlatform.instance = fake;
+    PreludeAuthClientPlatform.instance = fake;
   });
 
   group('handle stability', () {
     test('every call carries the same handle for one Dart instance', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       await client.startOTPLogin(
         StartOTPLoginOptions(identifier: PreludeIdentifier.emailAddress('a@b.c')),
       );
@@ -32,8 +32,8 @@ void main() {
     });
 
     test('two instances get different handles', () async {
-      final a = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
-      final b = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final a = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      final b = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       await a.resendOTP();
       await b.resendOTP();
       expect(fake.calls.map((c) => c.handle).toSet().length, 2);
@@ -42,7 +42,7 @@ void main() {
 
   group('dispose', () {
     test('is idempotent', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       await client.dispose();
       await client.dispose(); // must not throw
       // Only one underlying dispose call reaches the platform.
@@ -53,7 +53,7 @@ void main() {
     });
 
     test('post-dispose calls throw StateError', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       await client.dispose();
       expect(() => client.resendOTP(), throwsStateError);
       expect(() => client.refresh(), throwsStateError);
@@ -72,7 +72,7 @@ void main() {
         symbols: 1,
       );
 
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       final results = await client.validatePassword('Abcd1234!');
       expect(results.valid, isTrue);
 
@@ -86,7 +86,7 @@ void main() {
 
   group('changePassword', () {
     test('forwards a RedactedString unchanged', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       await client.changePassword(const RedactedString('hunter2'));
       final call = fake.calls.single;
       expect(call.method, 'changePassword');
@@ -114,7 +114,7 @@ void main() {
         offset: 0,
       );
 
-      final client = PreludeSessionClient(
+      final client = PreludeAuthClient(
         endpoint: const Endpoint.custom('https://x'),
       );
       final res = await client.listSessions(
@@ -131,7 +131,7 @@ void main() {
     });
 
     test('omitting options forwards an empty toJson', () async {
-      final client = PreludeSessionClient(
+      final client = PreludeAuthClient(
         endpoint: const Endpoint.custom('https://x'),
       );
       await client.listSessions();
@@ -143,7 +143,7 @@ void main() {
 
   group('revokeSessions', () {
     test('forwards each target shape verbatim', () async {
-      final client = PreludeSessionClient(
+      final client = PreludeAuthClient(
         endpoint: const Endpoint.custom('https://x'),
       );
       await client.revokeSessions(PreludeRevokeTarget.all);
@@ -175,7 +175,7 @@ void main() {
 
   group('step-up', () {
     test('requestStepUp returns the platform challenge without firing /otp', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       final challenge = await client.requestStepUp(scope: 'prld:pwd:write');
       expect(challenge.challengeID, 'cid_1');
       expect(
@@ -187,7 +187,7 @@ void main() {
     });
 
     test('sendStepUpOTP forwards the challenge to the platform', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       final challenge = await client.requestStepUp(scope: 'prld:pwd:write');
       await client.sendStepUpOTP(challenge);
 
@@ -197,7 +197,7 @@ void main() {
     });
 
     test('sendStepUpOTP throws after dispose without hitting the platform', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       final challenge = await client.requestStepUp(scope: 'prld:pwd:write');
       await client.dispose();
       expect(
@@ -212,7 +212,7 @@ void main() {
     });
 
     test('requestStepUp forwards metadata when supplied', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       await client.requestStepUp(
         scope: 'prld:pwd:write',
         metadata: const {'reason': 'pwd-rotate', 'origin': 'settings'},
@@ -225,14 +225,14 @@ void main() {
     });
 
     test('requestStepUp omits metadata when null', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       await client.requestStepUp(scope: 'prld:pwd:write');
       final call = fake.calls.singleWhere((c) => c.method == 'requestStepUp');
       expect(call.args.containsKey('metadata'), isFalse);
     });
 
     test('getActiveStepUp round-trips through the platform', () async {
-      final client = PreludeSessionClient(endpoint: const Endpoint.custom('https://x'));
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
       final result = await client.getActiveStepUp();
       expect(result, isNull);
       final calls = fake.calls.where((c) => c.method == 'getActiveStepUp');
@@ -243,7 +243,7 @@ void main() {
 
 /// Records every platform call and replays canned responses where
 /// the public API needs them.
-class _RecordingPlatform extends PreludeSessionClientPlatform
+class _RecordingPlatform extends PreludeAuthClientPlatform
     with MockPlatformInterfaceMixin {
   final List<_Call> calls = [];
 

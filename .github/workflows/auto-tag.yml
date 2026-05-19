@@ -63,7 +63,7 @@ jobs:
         with:
           channel: stable
       # Belt-and-suspenders: the monorepo's
-      # `sdk-validate-flutter-session-sdk` workflow already runs
+      # `sdk-validate-flutter-auth-sdk` workflow already runs
       # analyze + test on every PR that touches the package, so
       # main of this public repo should always be in a publishable
       # state. Re-running here means a hand-edit on main, or a

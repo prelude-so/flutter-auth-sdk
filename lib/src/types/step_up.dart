@@ -1,7 +1,7 @@
 /// Status of a step-up flow as reported by the server.
 enum StepUpStatus {
   /// Challenge issued; complete it (typically via
-  /// [PreludeSessionClient.submitStepUpOTP]) to be granted the
+  /// [PreludeAuthClient.submitStepUpOTP]) to be granted the
   /// scope.
   continueStep('continue'),
 
@@ -24,13 +24,13 @@ enum StepUpStatus {
   }
 }
 
-/// Handle returned by [PreludeSessionClient.requestStepUp] and
-/// [PreludeSessionClient.submitStepUpOTP].
+/// Handle returned by [PreludeAuthClient.requestStepUp] and
+/// [PreludeAuthClient.submitStepUpOTP].
 ///
 /// The challenge token + expiry stay on the native side, keyed by
 /// [challengeID] in a per-client cache. Only [challengeID] travels
 /// over the channel when the consumer hands the challenge back to
-/// [PreludeSessionClient.submitStepUpOTP] — the bridge looks up
+/// [PreludeAuthClient.submitStepUpOTP] — the bridge looks up
 /// the cached token, so a Dart-side log or debugger can never
 /// observe the bearer credential.
 ///
@@ -49,7 +49,7 @@ class StepUpChallenge {
 
   /// Server-side identifier for this challenge attempt. Stable
   /// across the lifetime of one challenge step; rotates on each
-  /// successful [PreludeSessionClient.submitStepUpOTP] that
+  /// successful [PreludeAuthClient.submitStepUpOTP] that
   /// advances the flow.
   final String challengeID;
 
@@ -57,7 +57,7 @@ class StepUpChallenge {
   /// …). `null` for a blocked challenge.
   final String? currentStep;
 
-  /// Scope passed to [PreludeSessionClient.requestStepUp].
+  /// Scope passed to [PreludeAuthClient.requestStepUp].
   final String requestedScope;
 
   /// Wire form sent across the platform channel. Carries no

@@ -1,8 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
+import 'package:prelude_flutter_auth_sdk/prelude_flutter_auth_sdk.dart';
 
-/// Locks every typed [PreludeSessionException] subtype against the
+/// Locks every typed [PreludeAuthException] subtype against the
 /// platform-side error code emitted by the native plugin. If a new
 /// case is added on the native side and not wired here, this suite
 /// catches the drift before consumers do.
@@ -31,7 +31,7 @@ void main() {
 
   test('every documented code hydrates the matching Dart subtype', () {
     for (final (code, expected) in cases) {
-      final ex = PreludeSessionException.fromPlatformException(
+      final ex = PreludeAuthException.fromPlatformException(
         PlatformException(code: code, message: 'boom'),
       );
       expect(
@@ -43,11 +43,11 @@ void main() {
     }
   });
 
-  test('unknown codes hydrate as PreludeSessionGenericException', () {
-    final ex = PreludeSessionException.fromPlatformException(
+  test('unknown codes hydrate as PreludeAuthGenericException', () {
+    final ex = PreludeAuthException.fromPlatformException(
       PlatformException(code: 'flux_capacitor_failed', message: 'oops'),
     );
-    expect(ex, isA<PreludeSessionGenericException>());
+    expect(ex, isA<PreludeAuthGenericException>());
     // The generic case round-trips its raw code so consumers can
     // still discriminate when they need to.
     expect(ex.code, 'flux_capacitor_failed');
@@ -55,7 +55,7 @@ void main() {
   });
 
   test('TimeoutException carries a stable message regardless of input', () {
-    final ex = PreludeSessionException.fromPlatformException(
+    final ex = PreludeAuthException.fromPlatformException(
       PlatformException(code: 'timeout', message: 'ignored'),
     );
     expect(ex, isA<TimeoutException>());

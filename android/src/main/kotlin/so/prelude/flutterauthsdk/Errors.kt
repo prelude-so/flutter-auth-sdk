@@ -1,13 +1,13 @@
-package so.prelude.fluttersessionsdk
+package so.prelude.flutterauthsdk
 
-import so.prelude.android.session.PreludeSessionError
+import so.prelude.android.auth.PreludeAuthError
 
 /** Wire-shape payload for `MethodChannel.Result.error`. */
 internal data class FlutterErrorPayload(val code: String, val message: String)
 
 /**
  * Local exception type for argument / config decode failures. Kept
- * distinct from [PreludeSessionError] so the error mapper can route
+ * distinct from [PreludeAuthError] so the error mapper can route
  * decode failures to a stable `bad_request` code without reaching
  * for the SDK's error hierarchy.
  */
@@ -20,7 +20,7 @@ internal fun missingArg(method: String, name: String): Throwable =
 
 internal fun mapError(error: Throwable): FlutterErrorPayload =
     when (error) {
-        is PreludeSessionError -> mapSessionError(error)
+        is PreludeAuthError -> mapSessionError(error)
         is DecodeException -> FlutterErrorPayload(
             code = "bad_request",
             message = error.message ?: "bad_request",
@@ -32,59 +32,59 @@ internal fun mapError(error: Throwable): FlutterErrorPayload =
     }
 
 /**
- * Match Dart's `PreludeSessionException.fromPlatformException` switch
+ * Match Dart's `PreludeAuthException.fromPlatformException` switch
  * arm-for-arm so the typed Dart exceptions hydrate correctly.
  * `Generic(code, message)` round-trips its server code as the
  * FlutterError code so unknown codes still surface to consumers.
  */
-private fun mapSessionError(error: PreludeSessionError): FlutterErrorPayload =
+private fun mapSessionError(error: PreludeAuthError): FlutterErrorPayload =
     when (error) {
-        is PreludeSessionError.BadRequest ->
+        is PreludeAuthError.BadRequest ->
             FlutterErrorPayload("bad_request", error.message.orEmpty())
-        is PreludeSessionError.Unauthorized ->
+        is PreludeAuthError.Unauthorized ->
             FlutterErrorPayload("unauthorized", error.message.orEmpty())
-        is PreludeSessionError.RateLimited ->
+        is PreludeAuthError.RateLimited ->
             FlutterErrorPayload("rate_limited", error.message.orEmpty())
-        is PreludeSessionError.InternalServerError ->
+        is PreludeAuthError.InternalServerError ->
             FlutterErrorPayload("internal_server_error", error.message.orEmpty())
-        is PreludeSessionError.MissingChallengeToken ->
+        is PreludeAuthError.MissingChallengeToken ->
             FlutterErrorPayload("missing_challenge_token", error.message.orEmpty())
-        is PreludeSessionError.InvalidChallengeToken ->
+        is PreludeAuthError.InvalidChallengeToken ->
             FlutterErrorPayload("invalid_challenge_token", error.message.orEmpty())
-        is PreludeSessionError.ExpiredChallengeToken ->
+        is PreludeAuthError.ExpiredChallengeToken ->
             FlutterErrorPayload("expired_challenge_token", error.message.orEmpty())
-        is PreludeSessionError.TokenReused ->
+        is PreludeAuthError.TokenReused ->
             FlutterErrorPayload("token_reused", error.message.orEmpty())
-        is PreludeSessionError.InvalidOTPCode ->
+        is PreludeAuthError.InvalidOTPCode ->
             FlutterErrorPayload("invalid_otp_code", error.message.orEmpty())
-        is PreludeSessionError.RefreshFailed ->
+        is PreludeAuthError.RefreshFailed ->
             FlutterErrorPayload("refresh_failed", error.message.orEmpty())
-        is PreludeSessionError.Timeout ->
+        is PreludeAuthError.Timeout ->
             FlutterErrorPayload("timeout", "Request timed out")
-        is PreludeSessionError.InvalidConfiguration ->
+        is PreludeAuthError.InvalidConfiguration ->
             FlutterErrorPayload("invalid_configuration", error.message.orEmpty())
-        is PreludeSessionError.InvalidPassword ->
+        is PreludeAuthError.InvalidPassword ->
             FlutterErrorPayload("invalid_password", error.message.orEmpty())
-        is PreludeSessionError.Forbidden ->
+        is PreludeAuthError.Forbidden ->
             FlutterErrorPayload("forbidden", error.message.orEmpty())
-        is PreludeSessionError.InsufficientScope ->
+        is PreludeAuthError.InsufficientScope ->
             FlutterErrorPayload("insufficient_scope", error.message.orEmpty())
-        is PreludeSessionError.NotFound ->
+        is PreludeAuthError.NotFound ->
             FlutterErrorPayload("not_found", error.message.orEmpty())
-        is PreludeSessionError.Conflict ->
+        is PreludeAuthError.Conflict ->
             FlutterErrorPayload("conflict", error.message.orEmpty())
-        is PreludeSessionError.Network ->
+        is PreludeAuthError.Network ->
             FlutterErrorPayload("network", error.cause?.message ?: error.message.orEmpty())
         // Dart doesn't model these natively; surface through the
         // generic catch-all with a stable code so consumers can
         // still branch on them when needed.
-        is PreludeSessionError.CryptoFailure ->
+        is PreludeAuthError.CryptoFailure ->
             FlutterErrorPayload("crypto_failure", error.cause?.message ?: error.message.orEmpty())
-        is PreludeSessionError.SignalsDispatchFailed ->
+        is PreludeAuthError.SignalsDispatchFailed ->
             FlutterErrorPayload(
                 "signals_dispatch_failed",
                 error.cause?.message ?: error.message.orEmpty(),
             )
-        is PreludeSessionError.Generic ->
+        is PreludeAuthError.Generic ->
             FlutterErrorPayload(error.code, error.displayMessage)
     }

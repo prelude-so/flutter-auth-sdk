@@ -1,10 +1,9 @@
-/// Prelude Flutter Session SDK.
+/// Prelude Flutter Auth SDK.
 ///
-/// Public Dart API surface for Prelude session-based
-/// authentication on iOS and Android.
+/// Public Dart API surface for Prelude Auth on iOS and Android.
 library;
 
-export 'src/client.dart' show PreludeSessionClient;
+export 'src/client.dart' show PreludeAuthClient;
 
 export 'src/types/endpoint.dart' show Endpoint;
 export 'src/types/errors.dart'
@@ -22,8 +21,8 @@ export 'src/types/errors.dart'
         MissingChallengeTokenException,
         NetworkException,
         NotFoundException,
-        PreludeSessionException,
-        PreludeSessionGenericException,
+        PreludeAuthException,
+        PreludeAuthGenericException,
         RateLimitedException,
         RefreshFailedException,
         TimeoutException,

@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
+import 'package:prelude_flutter_auth_sdk/prelude_flutter_auth_sdk.dart';
 
 /// Verifies the Dart-side plumbing of `signalsKeyOverride`.
 ///
@@ -11,7 +11,7 @@ import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('prelude_so_flutter_session_sdk');
+  const channel = MethodChannel('prelude_so_flutter_auth_sdk');
   late List<MethodCall> calls;
 
   setUp(() {
@@ -36,7 +36,7 @@ void main() {
   }
 
   test('omitting signalsKeyOverride forwards null', () async {
-    final client = PreludeSessionClient(
+    final client = PreludeAuthClient(
       endpoint: const Endpoint.custom('https://x'),
     );
     await client.resendOTP();
@@ -44,7 +44,7 @@ void main() {
   });
 
   test('non-null override is forwarded verbatim', () async {
-    final client = PreludeSessionClient(
+    final client = PreludeAuthClient(
       endpoint: const Endpoint.custom('https://x'),
       signalsKeyOverride: 'sdk_test_123',
     );
@@ -56,7 +56,7 @@ void main() {
   });
 
   test('override survives across multiple calls on the same client', () async {
-    final client = PreludeSessionClient(
+    final client = PreludeAuthClient(
       endpoint: const Endpoint.custom('https://x'),
       signalsKeyOverride: 'sdk_test_abc',
     );

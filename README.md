@@ -2,29 +2,29 @@
 
 ### Usage
 
-The Flutter Session SDK lets you sign users into your Flutter app and manages the resulting session — tokens, refresh, logout, step-up — against the Prelude session API on iOS and Android.
+The Flutter Auth SDK lets you sign users into your Flutter app and manages the resulting session — tokens, refresh, logout, step-up — against the Prelude Auth API on iOS and Android.
 
 It is provided as a regular Flutter plugin that you can add as a dependency in your app's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  prelude_flutter_session_sdk: ^0.3.0
+  prelude_flutter_auth_sdk: ^0.4.0
 ```
 
 ```bash
-flutter pub add prelude_flutter_session_sdk
+flutter pub add prelude_flutter_auth_sdk
 ```
 
-iOS deployment target: **15.1**. Android minimum SDK: **API 26**. The plugin pulls the native SDKs in for you — `pod install` downloads `PreludeSession` (and `Prelude`, the signals SDK) on iOS, and Gradle resolves `so.prelude.android:session-sdk` (plus `so.prelude.android:sdk` for signals) from Maven Central on Android. Nothing else to add to your project — no extra coordinates in your iOS Podfile or Android `build.gradle`.
+iOS deployment target: **15.1**. Android minimum SDK: **API 26**. The plugin pulls the native SDKs in for you — `pod install` downloads `PreludeAuth` (and `Prelude`, the signals SDK) on iOS, and Gradle resolves `so.prelude.android:auth-sdk` (plus `so.prelude.android:sdk` for signals) from Maven Central on Android. Nothing else to add to your project — no extra coordinates in your iOS Podfile or Android `build.gradle`.
 
 #### Configure the client
 
-Point the client at your project's Prelude session endpoint. Use the production URL in production, and a custom URL for staging or local development.
+Point the client at your project's Prelude Auth endpoint. Use the production URL in production, and a custom URL for staging or local development.
 
 ```dart
-import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
+import 'package:prelude_flutter_auth_sdk/prelude_flutter_auth_sdk.dart';
 
-final client = PreludeSessionClient(
+final client = PreludeAuthClient(
   endpoint: Endpoint.custom('https://<your-app>.session.prelude.dev'),
 );
 ```
@@ -71,7 +71,7 @@ Or fetch the policy once and classify locally — pure function, safe to call on
 
 ```dart
 final policy = await client.passwordCompliancy();
-final result = PreludeSessionClient.validate(
+final result = PreludeAuthClient.validate(
   password: 'candidate',
   against: policy,
 );
@@ -80,14 +80,15 @@ final result = PreludeSessionClient.validate(
 #### Session lifecycle
 
 ```dart
-await client.refresh();   // refreshes the access token
-await client.logout();    // revokes the session and clears local tokens
+await client.refresh();             // refreshes the access token
+await client.logout();              // revokes the session and clears local tokens
+await client.invalidateSession();   // marks the local token expired; next protected call refreshes
 
 final profile = await client.getProfile();      // currently signed-in user, if any
 final token   = await client.getAccessToken();  // the access token, if any
 ```
 
-Protected requests auto-refresh expired access tokens transparently, so most apps will not need to call `refresh()` explicitly.
+Protected requests auto-refresh expired access tokens transparently, so most apps will not need to call `refresh()` explicitly. `invalidateSession()` is the local-only counterpart — it doesn't touch the server or clear the refresh token, it just forces the next protected call to refresh.
 
 #### Step-up authentication
 
@@ -134,7 +135,7 @@ Revoking the current session (`all`, `mine`, or its specific id) also wipes the 
 
 #### Anti-fraud signals
 
-The Prelude signals SDK is bundled and **off by default**. When a key is configured for the running platform, the session client stamps a Prelude `dispatch_id` onto unauthenticated logins (start OTP, login with password, request step-up). With no key configured, `dispatch_id` is omitted from login bodies and the rest of the flow is unchanged — useful while integrating, recommended to enable for production.
+The Prelude signals SDK is bundled and **off by default**. When a key is configured for the running platform, the auth client stamps a Prelude `dispatch_id` onto unauthenticated logins (start OTP, login with password, request step-up). With no key configured, `dispatch_id` is omitted from login bodies and the rest of the flow is unchanged — useful while integrating, recommended to enable for production.
 
 Configuration lives in the native manifest so the iOS key can't ship in an Android build, and vice versa.
 
@@ -156,7 +157,7 @@ Android — add a `<meta-data>` entry inside `<application>` in `android/app/src
 For runtime-fetched configuration (CI, white-label apps), `signalsKeyOverride` on the constructor wins over the manifest:
 
 ```dart
-final client = PreludeSessionClient(
+final client = PreludeAuthClient(
   endpoint: Endpoint.custom('https://<your-app>.session.prelude.dev'),
   signalsKeyOverride: await myConfig.fetchSignalsKey(),
 );
@@ -170,15 +171,15 @@ Call `dispose()` when you're done with a client so the native session is release
 await client.dispose();
 ```
 
-After disposal the instance throws on every subsequent call. Create a new `PreludeSessionClient` to start a fresh logical session.
+After disposal the instance throws on every subsequent call. Create a new `PreludeAuthClient` to start a fresh logical session.
 
 #### Endpoint configuration
 
 ```dart
-final client = PreludeSessionClient(
+final client = PreludeAuthClient(
   endpoint: Endpoint.custom('https://<your-app>.session.prelude.dev'),
   timeout: const Duration(seconds: 10),
 );
 ```
 
-Each Prelude project has its own session endpoint URL — use the production URL in production, and a custom URL for staging or local development.
+Each Prelude project has its own Auth endpoint URL — use the production URL in production, and a custom URL for staging or local development.

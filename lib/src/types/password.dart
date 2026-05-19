@@ -1,6 +1,6 @@
 import 'redacted_string.dart';
 
-/// Options for [PreludeSessionClient.loginWithPassword].
+/// Options for [PreludeAuthClient.loginWithPassword].
 ///
 /// The password is wrapped in a [RedactedString] so the struct is
 /// safe to `print`, `toString`, or surface in error messages.
@@ -21,7 +21,7 @@ class LoginWithPasswordOptions {
   final String emailAddress;
 
   /// Held only for the duration of one
-  /// [PreludeSessionClient.loginWithPassword] call; never
+  /// [PreludeAuthClient.loginWithPassword] call; never
   /// persisted by the SDK.
   final RedactedString password;
 

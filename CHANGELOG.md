@@ -1,10 +1,19 @@
 # Changelog
 
-Notable changes to the Prelude Flutter Session SDK.
+Notable changes to the Prelude Flutter Auth SDK.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-05-18
+
+First release under the new package name. Continues the history of
+[`prelude_flutter_session_sdk`](https://pub.dev/packages/prelude_flutter_session_sdk);
+versions ≤ `0.3.0` below are listed for migration context.
+
+### Changed
+- **Renamed**: package `prelude_flutter_session_sdk` → `prelude_flutter_auth_sdk`; `PreludeSessionClient` → `PreludeAuthClient`; `PreludeSessionException` → `PreludeAuthException`. Native dependencies follow: `PreludeAuth` on iOS and `so.prelude.android:auth-sdk` on Android.
+- Bumps the iOS dependency to `PreludeAuth` `0.3.0` and the Android dependency to `so.prelude.android:auth-sdk:0.3.0` (the renamed native auth SDKs; behavior-equivalent to the matching `0.3.0` session-SDK releases).
+- Bumps the Android signals SDK pin to `so.prelude.android:sdk:0.5.2` (was `0.5.0`).
 
 ## [0.3.0] - 2026-05-10
 
@@ -18,13 +27,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 - **Behavior change:** `requestStepUp` and `submitStepUpOTP` no longer auto-fire `POST /otp`. Callers must invoke `sendStepUpOTP(challenge)` explicitly when the next step is an OTP-delivery step.
-- Bumps the iOS dependency to `PreludeSession` `0.2.0` and the Android dependency to `so.prelude.android:session-sdk:0.2.0`.
+- Bumps the iOS dependency to `PreludeAuth` `0.2.0` and the Android dependency to `so.prelude.android:auth-sdk:0.2.0`.
 
 ## [0.2.0] - 2026-04-30
 
 ### Added
 - Android bridge: the full Dart API now works on Android alongside iOS.
-- `PreludeFlutterSessionSdkPlugin` (Android) with per-handle native client cache and in-memory step-up challenge cache; the bearer challenge token never crosses the channel.
+- `PreludeFlutterAuthSdkPlugin` (Android) with per-handle native client cache and in-memory step-up challenge cache; the bearer challenge token never crosses the channel.
 
 ### Requirements
 - Android API 26+

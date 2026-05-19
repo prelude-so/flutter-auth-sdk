@@ -15,18 +15,18 @@ build
 # shadows the gitignore at this level so we list it here too.
 pubspec.lock
 
-# Vendored copy of PreludeSession's Swift sources, mirrored into
+# Vendored copy of PreludeAuth's Swift sources, mirrored into
 # the pod tree on every `pod install` from
-# `PRELUDE_SESSION_SDK_LOCAL_PATH`. Non-deterministic across
+# `PRELUDE_AUTH_SDK_LOCAL_PATH`. Non-deterministic across
 # checkouts and only relevant during local development; the
-# published pod fetches PreludeSession by tag from the apple
-# session SDK repo. See `ios/prelude_flutter_session_sdk.podspec`
+# published pod fetches PreludeAuth by tag from the apple
+# auth SDK repo. See `ios/prelude_flutter_auth_sdk.podspec`
 # for the resolution rules. The package-root `.gitignore` also
 # excludes this; duplicated here because `.pubignore` shadows it.
 ios/sdk/
 
 # Internal demo app. Bundled in the monorepo for end-to-end
-# smoke testing of the plugin against a local PreludeSession,
+# smoke testing of the plugin against a local PreludeAuth,
 # but the public-repo publish script strips it out before
 # `flutter pub publish` runs in CI. Mirror that exclusion
 # here so a manual local publish (e.g. the first-time pub.dev

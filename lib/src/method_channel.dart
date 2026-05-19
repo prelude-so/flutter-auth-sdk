@@ -12,30 +12,30 @@ import 'types/step_up.dart';
 import 'types/user.dart';
 
 /// `MethodChannel`-based implementation of
-/// [PreludeSessionClientPlatform]. The channel name matches the
+/// [PreludeAuthClientPlatform]. The channel name matches the
 /// one registered by the iOS and Android plugin shells.
-class MethodChannelPreludeSessionClient extends PreludeSessionClientPlatform {
+class MethodChannelPreludeAuthClient extends PreludeAuthClientPlatform {
   @visibleForTesting
-  final methodChannel = const MethodChannel('prelude_so_flutter_session_sdk');
+  final methodChannel = const MethodChannel('prelude_so_flutter_auth_sdk');
 
   /// Wrap one channel invocation with a single error-translation
   /// hop so every public method shares the same code path. The
   /// platform-side codes (`unauthorized`, `invalid_otp_code`, …)
-  /// match [PreludeSessionException.fromPlatformException].
+  /// match [PreludeAuthException.fromPlatformException].
   Future<T?> _invoke<T>(String method, [Map<String, Object?>? args]) async {
     try {
       return await methodChannel.invokeMethod<T>(method, args);
     } on PlatformException catch (e) {
-      throw PreludeSessionException.fromPlatformException(e);
+      throw PreludeAuthException.fromPlatformException(e);
     }
   }
 
   /// Convenience for routes that always return a structured map.
   ///
-  /// A null reply here is a Dart↔native contract violation, not a
-  /// session-API failure (the native plugin either returns the
+  /// A null reply here is a Dart↔native contract violation, not an
+  /// Auth-API failure (the native plugin either returns the
   /// encoded value or surfaces a `PlatformException`). It surfaces
-  /// as a [StateError] so consumers catching [PreludeSessionException]
+  /// as a [StateError] so consumers catching [PreludeAuthException]
   /// don't accidentally swallow it.
   Future<Map<Object?, Object?>> _invokeMap(
     String method,
@@ -44,7 +44,7 @@ class MethodChannelPreludeSessionClient extends PreludeSessionClientPlatform {
     final raw = await _invoke<Map<Object?, Object?>>(method, args);
     if (raw == null) {
       throw StateError(
-        'PreludeSession bridge returned null for `$method`; '
+        'PreludeAuth bridge returned null for `$method`; '
         'expected a non-null map.',
       );
     }

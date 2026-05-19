@@ -1,15 +1,15 @@
 import 'package:flutter/services.dart';
 
-/// Base type for every error thrown by [PreludeSessionClient].
+/// Base type for every error thrown by [PreludeAuthClient].
 ///
-/// A helper [PreludeSessionException.fromPlatformException] decodes
+/// A helper [PreludeAuthException.fromPlatformException] decodes
 /// the structured `code` / `message` / `details` produced by the
 /// native plugin into the matching Dart subtype, so consumers can
 /// `try/catch` against specific cases (`InvalidOTPCodeException`,
 /// `InsufficientScopeException`, …) instead of inspecting raw
 /// channel error codes.
-sealed class PreludeSessionException implements Exception {
-  const PreludeSessionException(this.message);
+sealed class PreludeAuthException implements Exception {
+  const PreludeAuthException(this.message);
 
   /// Human-readable message.
   final String message;
@@ -23,9 +23,9 @@ sealed class PreludeSessionException implements Exception {
 
   /// Decode a [PlatformException] thrown by the method channel
   /// into the matching typed subtype. Falls back to
-  /// [PreludeSessionGenericException] when the code isn't
+  /// [PreludeAuthGenericException] when the code isn't
   /// recognised — keeping forward compatibility cheap.
-  static PreludeSessionException fromPlatformException(PlatformException e) {
+  static PreludeAuthException fromPlatformException(PlatformException e) {
     final message = e.message ?? '';
     switch (e.code) {
       case 'bad_request':
@@ -65,49 +65,49 @@ sealed class PreludeSessionException implements Exception {
       case 'network':
         return NetworkException(message);
     }
-    return PreludeSessionGenericException(code: e.code, message: message);
+    return PreludeAuthGenericException(code: e.code, message: message);
   }
 }
 
-class BadRequestException extends PreludeSessionException {
+class BadRequestException extends PreludeAuthException {
   const BadRequestException(super.message);
   @override
   String get code => 'bad_request';
 }
 
-class UnauthorizedException extends PreludeSessionException {
+class UnauthorizedException extends PreludeAuthException {
   const UnauthorizedException(super.message);
   @override
   String get code => 'unauthorized';
 }
 
-class RateLimitedException extends PreludeSessionException {
+class RateLimitedException extends PreludeAuthException {
   const RateLimitedException(super.message);
   @override
   String get code => 'rate_limited';
 }
 
-class InternalServerErrorException extends PreludeSessionException {
+class InternalServerErrorException extends PreludeAuthException {
   const InternalServerErrorException(super.message);
   @override
   String get code => 'internal_server_error';
 }
 
-class MissingChallengeTokenException extends PreludeSessionException {
+class MissingChallengeTokenException extends PreludeAuthException {
   const MissingChallengeTokenException(super.message);
   @override
   String get code => 'missing_challenge_token';
 }
 
-class InvalidChallengeTokenException extends PreludeSessionException {
+class InvalidChallengeTokenException extends PreludeAuthException {
   const InvalidChallengeTokenException(super.message);
   @override
   String get code => 'invalid_challenge_token';
 }
 
 /// Step-up challenge token exceeded its TTL. Recover via
-/// [PreludeSessionClient.requestStepUp].
-class ExpiredChallengeTokenException extends PreludeSessionException {
+/// [PreludeAuthClient.requestStepUp].
+class ExpiredChallengeTokenException extends PreludeAuthException {
   const ExpiredChallengeTokenException(super.message);
   @override
   String get code => 'expired_challenge_token';
@@ -115,7 +115,7 @@ class ExpiredChallengeTokenException extends PreludeSessionException {
 
 /// Bearer token was already redeemed. Same recovery path as
 /// [ExpiredChallengeTokenException]: start a fresh challenge.
-class TokenReusedException extends PreludeSessionException {
+class TokenReusedException extends PreludeAuthException {
   const TokenReusedException(super.message);
   @override
   String get code => 'token_reused';
@@ -123,25 +123,25 @@ class TokenReusedException extends PreludeSessionException {
 
 /// OTP code submitted during login was wrong or expired. Distinct
 /// from [UnauthorizedException]: retry the code, don't re-login.
-class InvalidOTPCodeException extends PreludeSessionException {
+class InvalidOTPCodeException extends PreludeAuthException {
   const InvalidOTPCodeException(super.message);
   @override
   String get code => 'invalid_otp_code';
 }
 
-class RefreshFailedException extends PreludeSessionException {
+class RefreshFailedException extends PreludeAuthException {
   const RefreshFailedException(super.message);
   @override
   String get code => 'refresh_failed';
 }
 
-class TimeoutException extends PreludeSessionException {
+class TimeoutException extends PreludeAuthException {
   const TimeoutException() : super('Request timed out');
   @override
   String get code => 'timeout';
 }
 
-class InvalidConfigurationException extends PreludeSessionException {
+class InvalidConfigurationException extends PreludeAuthException {
   const InvalidConfigurationException(super.message);
   @override
   String get code => 'invalid_configuration';
@@ -149,22 +149,22 @@ class InvalidConfigurationException extends PreludeSessionException {
 
 /// Password rejected by the server's policy. Distinct from
 /// [UnauthorizedException] ("wrong password").
-class InvalidPasswordException extends PreludeSessionException {
+class InvalidPasswordException extends PreludeAuthException {
   const InvalidPasswordException(super.message);
   @override
   String get code => 'invalid_password';
 }
 
 /// Caller is authenticated but policy denies this action.
-class ForbiddenException extends PreludeSessionException {
+class ForbiddenException extends PreludeAuthException {
   const ForbiddenException(super.message);
   @override
   String get code => 'forbidden';
 }
 
 /// Access token lacks a scope the endpoint requires. Recover via
-/// [PreludeSessionClient.requestStepUp].
-class InsufficientScopeException extends PreludeSessionException {
+/// [PreludeAuthClient.requestStepUp].
+class InsufficientScopeException extends PreludeAuthException {
   const InsufficientScopeException(super.message);
   @override
   String get code => 'insufficient_scope';
@@ -172,7 +172,7 @@ class InsufficientScopeException extends PreludeSessionException {
 
 /// Server returned 404 / not_found for the requested resource
 /// (e.g. revoking a session id that no longer exists).
-class NotFoundException extends PreludeSessionException {
+class NotFoundException extends PreludeAuthException {
   const NotFoundException(super.message);
   @override
   String get code => 'not_found';
@@ -180,14 +180,14 @@ class NotFoundException extends PreludeSessionException {
 
 /// Server returned 409 / conflict (e.g. an identifier the caller
 /// is trying to claim is already taken).
-class ConflictException extends PreludeSessionException {
+class ConflictException extends PreludeAuthException {
   const ConflictException(super.message);
   @override
   String get code => 'conflict';
 }
 
 /// Transport / TLS / DNS failure.
-class NetworkException extends PreludeSessionException {
+class NetworkException extends PreludeAuthException {
   const NetworkException(super.message);
   @override
   String get code => 'network';
@@ -196,8 +196,8 @@ class NetworkException extends PreludeSessionException {
 /// Catch-all for codes the SDK doesn't yet model. Lets the bridge
 /// stay forward-compatible with new server-side error codes
 /// without a Flutter SDK release.
-class PreludeSessionGenericException extends PreludeSessionException {
-  const PreludeSessionGenericException({
+class PreludeAuthGenericException extends PreludeAuthException {
+  const PreludeAuthGenericException({
     required String code,
     required String message,
   }) : _code = code,
