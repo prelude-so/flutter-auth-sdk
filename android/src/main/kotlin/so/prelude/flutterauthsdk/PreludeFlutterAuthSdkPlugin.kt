@@ -1,7 +1,7 @@
-// PreludeFlutterSessionSdkPlugin
+// PreludeFlutterAuthSdkPlugin
 //
-// Android plugin for the Flutter Session SDK. Bridges the Dart
-// `PreludeSessionClient` API onto the native session client.
+// Android plugin for the Flutter Auth SDK. Bridges the Dart
+// `PreludeAuthClient` API onto the native auth client.
 //
 // One Dart instance maps to one native client, looked up by the
 // per-instance handle string the Dart side stamps at construction.
@@ -13,7 +13,7 @@
 // (see [ClientRegistry]), so the wire form sent across the channel
 // can omit the bearer challenge token.
 
-package so.prelude.fluttersessionsdk
+package so.prelude.flutterauthsdk
 
 import android.content.Context
 import android.os.Build
@@ -31,7 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-class PreludeFlutterSessionSdkPlugin :
+class PreludeFlutterAuthSdkPlugin :
     FlutterPlugin,
     MethodCallHandler {
     private lateinit var channel: MethodChannel
@@ -64,7 +64,7 @@ class PreludeFlutterSessionSdkPlugin :
     private val registry = ClientRegistry()
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        channel = MethodChannel(binding.binaryMessenger, "prelude_so_flutter_session_sdk")
+        channel = MethodChannel(binding.binaryMessenger, "prelude_so_flutter_auth_sdk")
         channel.setMethodCallHandler(this)
         androidContext = binding.applicationContext
     }

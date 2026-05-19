@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
+import 'package:prelude_flutter_auth_sdk/prelude_flutter_auth_sdk.dart';
 
 /// Round-trip tests for every wire-form value the bridge sends or
 /// receives. The native plugin's encoder is the source of truth;

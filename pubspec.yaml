@@ -1,9 +1,9 @@
-name: prelude_flutter_session_sdk
-description: "Prelude Flutter Session SDK. Easily integrate Prelude session-based authentication in your Flutter application."
-version: 0.3.0
+name: prelude_flutter_auth_sdk
+description: "Prelude Flutter Auth SDK. Easily integrate Prelude Auth in your Flutter application."
+version: 0.4.0
 homepage: "https://prelude.so"
 documentation: "https://docs.prelude.so/introduction/frontend-sdks/flutter"
-repository: "https://github.com/prelude-so/flutter-session-sdk"
+repository: "https://github.com/prelude-so/flutter-auth-sdk"
 
 topics:
   - authentication
@@ -33,7 +33,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: so.prelude.fluttersessionsdk
-        pluginClass: PreludeFlutterSessionSdkPlugin
+        package: so.prelude.flutterauthsdk
+        pluginClass: PreludeFlutterAuthSdkPlugin
       ios:
-        pluginClass: PreludeFlutterSessionSdkPlugin
+        pluginClass: PreludeFlutterAuthSdkPlugin

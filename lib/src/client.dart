@@ -10,20 +10,20 @@ import 'types/sessions.dart';
 import 'types/step_up.dart';
 import 'types/user.dart';
 
-/// Client for the Prelude Session API on Flutter.
+/// Client for the Prelude Auth API on Flutter.
 ///
 /// Each Dart instance owns a distinct logical session: the SDK
 /// stamps an opaque handle at construction time and forwards it
 /// with every method call. The native plugin lazily creates one
-/// session client per handle on first use and reuses it,
+/// auth client per handle on first use and reuses it,
 /// so per-instance state — DPoP keys, refresh tokens,
 /// access-token caches — stays stable across calls.
 ///
 /// Call [dispose] when you're done with an instance so the native
 /// client can be released. Forgetting to dispose leaks the native
 /// client until the process exits; nothing else breaks.
-class PreludeSessionClient {
-  /// Creates a session client.
+class PreludeAuthClient {
+  /// Creates an auth client.
   ///
   /// [endpoint] is the API endpoint. Defaults to
   /// [Endpoint.defaultEndpoint] (the canonical Prelude address);
@@ -51,7 +51,7 @@ class PreludeSessionClient {
   /// can't ship in an Android build, and vice versa. The override
   /// is for runtime-fetched config (CI, white-label) where a
   /// Dart-side string is genuinely the right shape.
-  PreludeSessionClient({
+  PreludeAuthClient({
     Endpoint endpoint = Endpoint.defaultEndpoint,
     String? hostOverride,
     Duration timeout = const Duration(seconds: 10),
@@ -68,7 +68,7 @@ class PreludeSessionClient {
 
   /// Opaque per-instance handle, stable for the lifetime of this
   /// Dart instance. The native plugin uses it to look up the
-  /// matching `PreludeSessionClient` for each call.
+  /// matching `PreludeAuthClient` for each call.
   final String _handle = _newHandle();
   final ClientConfig _config;
 
@@ -76,8 +76,8 @@ class PreludeSessionClient {
   /// calls throw [StateError] so silent leaks turn loud.
   bool _disposed = false;
 
-  static PreludeSessionClientPlatform get _platform =>
-      PreludeSessionClientPlatform.instance;
+  static PreludeAuthClientPlatform get _platform =>
+      PreludeAuthClientPlatform.instance;
 
   /// Native SDK platform version. Channel smoke test.
   Future<String?> getPlatformVersion() {
@@ -158,7 +158,7 @@ class PreludeSessionClient {
   ) async {
     _ensureNotDisposed();
     final compliancy = await passwordCompliancy();
-    return PreludeSessionClient.validate(
+    return PreludeAuthClient.validate(
       password: password,
       against: compliancy,
     );
@@ -426,14 +426,14 @@ class PreludeSessionClient {
   void _ensureNotDisposed() {
     if (_disposed) {
       throw StateError(
-        'PreludeSessionClient has been disposed. Create a new instance '
+        'PreludeAuthClient has been disposed. Create a new instance '
         'to start a new logical session.',
       );
     }
   }
 }
 
-/// Unicode general-category regexes used by [PreludeSessionClient.validate].
+/// Unicode general-category regexes used by [PreludeAuthClient.validate].
 /// Compiled once at module load — the engine treats `\p{...}` with the
 /// `unicode` flag as ECMAScript's Unicode property escapes, matching
 /// iOS's `Unicode.Scalar.Properties.generalCategory` arms exactly.

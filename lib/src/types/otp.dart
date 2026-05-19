@@ -1,6 +1,6 @@
 import 'identifier.dart';
 
-/// Options for [PreludeSessionClient.startOTPLogin].
+/// Options for [PreludeAuthClient.startOTPLogin].
 class StartOTPLoginOptions {
   const StartOTPLoginOptions({required this.identifier, this.loginConfigID});
 

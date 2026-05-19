@@ -10,7 +10,7 @@ import 'types/sessions.dart';
 import 'types/step_up.dart';
 import 'types/user.dart';
 
-/// Platform interface for [PreludeSessionClient].
+/// Platform interface for [PreludeAuthClient].
 ///
 /// Concrete implementations extend this class. Tests substitute a
 /// mock by assigning to [instance]; `verifyToken` keeps rogue
@@ -18,21 +18,21 @@ import 'types/user.dart';
 ///
 /// Every method takes the calling client's `handle` (a UUID
 /// minted by the Dart constructor) plus its config snapshot. The
-/// native plugin lazily creates a `PreludeSessionClient` per
+/// native plugin lazily creates a `PreludeAuthClient` per
 /// handle on first call and reuses it across subsequent calls —
 /// so DPoP keys, refresh tokens, and the access-token cache stay
 /// stable for the lifetime of the Dart instance.
-abstract class PreludeSessionClientPlatform extends PlatformInterface {
-  PreludeSessionClientPlatform() : super(token: _token);
+abstract class PreludeAuthClientPlatform extends PlatformInterface {
+  PreludeAuthClientPlatform() : super(token: _token);
 
   static final Object _token = Object();
 
-  static PreludeSessionClientPlatform _instance =
-      MethodChannelPreludeSessionClient();
+  static PreludeAuthClientPlatform _instance =
+      MethodChannelPreludeAuthClient();
 
-  static PreludeSessionClientPlatform get instance => _instance;
+  static PreludeAuthClientPlatform get instance => _instance;
 
-  static set instance(PreludeSessionClientPlatform instance) {
+  static set instance(PreludeAuthClientPlatform instance) {
     PlatformInterface.verifyToken(instance, _token);
     _instance = instance;
   }
@@ -87,7 +87,7 @@ abstract class PreludeSessionClientPlatform extends PlatformInterface {
 
   // Note: there is intentionally no `validatePassword` on the
   // platform interface. Classification is pure and runs in Dart
-  // via [PreludeSessionClient.validate]; the only thing platforms
+  // via [PreludeAuthClient.validate]; the only thing platforms
   // need to surface is the rules ([passwordCompliancy]).
 
   Future<void> changePassword({
@@ -182,7 +182,7 @@ abstract class PreludeSessionClientPlatform extends PlatformInterface {
   });
 }
 
-/// Snapshot of the [PreludeSessionClient] constructor args. Sent
+/// Snapshot of the [PreludeAuthClient] constructor args. Sent
 /// alongside every call so the native plugin can lazily construct
 /// the underlying client on first use without an explicit init
 /// step.

@@ -1,5 +1,5 @@
-/// Types backing [PreludeSessionClient.listSessions] and
-/// [PreludeSessionClient.revokeSessions].
+/// Types backing [PreludeAuthClient.listSessions] and
+/// [PreludeAuthClient.revokeSessions].
 library;
 
 /// Form factor reported by the server for an active session.
@@ -127,7 +127,7 @@ class PreludeSessionView {
       'expiresAt: $expiresAt)';
 }
 
-/// Pagination knobs for [PreludeSessionClient.listSessions]. Both
+/// Pagination knobs for [PreludeAuthClient.listSessions]. Both
 /// fields are nullable so the caller can defer to whatever default
 /// the server picks — a server-side default change lands without a
 /// client release.
@@ -154,7 +154,7 @@ class PreludeListSessionsOptions {
 }
 
 /// Page of active sessions returned by
-/// [PreludeSessionClient.listSessions].
+/// [PreludeAuthClient.listSessions].
 class PreludeListSessionsResponse {
   const PreludeListSessionsResponse({
     required this.sessions,
@@ -193,7 +193,7 @@ class PreludeListSessionsResponse {
   }
 }
 
-/// Which sessions to revoke on [PreludeSessionClient.revokeSessions].
+/// Which sessions to revoke on [PreludeAuthClient.revokeSessions].
 ///
 /// Sealed so each case is exhaustive at the call site; the
 /// `session` case requires its id at the type level.
@@ -207,7 +207,7 @@ sealed class PreludeRevokeTarget {
   static const PreludeRevokeTarget others = _RevokeOthers();
 
   /// Only the session issuing the call — i.e. this device.
-  /// Effectively a [PreludeSessionClient.logout] without rotating
+  /// Effectively a [PreludeAuthClient.logout] without rotating
   /// the server-side DPoP-key binding. Other devices stay signed in.
   static const PreludeRevokeTarget mine = _RevokeMine();
 

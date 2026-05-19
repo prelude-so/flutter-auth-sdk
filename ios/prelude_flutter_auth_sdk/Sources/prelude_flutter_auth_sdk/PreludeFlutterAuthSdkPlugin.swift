@@ -1,7 +1,7 @@
-// PreludeFlutterSessionSdkPlugin
+// PreludeFlutterAuthSdkPlugin
 //
-// iOS plugin for the Flutter Session SDK. Bridges the Dart
-// `PreludeSessionClient` API onto the native session client.
+// iOS plugin for the Flutter Auth SDK. Bridges the Dart
+// `PreludeAuthClient` API onto the native auth client.
 //
 // One Dart instance maps to one native client, looked up by the
 // per-instance handle string the Dart side stamps at construction.
@@ -16,11 +16,11 @@
 import Flutter
 import UIKit
 
-public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
+public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
     /// Per-handle native client cache. Reads + writes are
     /// serialised behind ``registryQueue`` so concurrent Dart
     /// calls under the same handle observe a consistent client.
-    private var registry: [String: PreludeSessionClient] = [:]
+    private var registry: [String: PreludeAuthClient] = [:]
 
     /// Per-handle in-flight step-up challenges, keyed by
     /// (handle, challengeID). Filled by ``requestStepUp`` /
@@ -37,15 +37,15 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
     /// handle should evict both in lockstep — so a shared queue
     /// keeps that invariant cheap to express.
     private let registryQueue = DispatchQueue(
-        label: "so.prelude.fluttersessionsdk.registry"
+        label: "so.prelude.flutterauthsdk.registry"
     )
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
-            name: "prelude_so_flutter_session_sdk",
+            name: "prelude_so_flutter_auth_sdk",
             binaryMessenger: registrar.messenger()
         )
-        let instance = PreludeFlutterSessionSdkPlugin()
+        let instance = PreludeFlutterAuthSdkPlugin()
         registrar.addMethodCallDelegate(instance, channel: channel)
     }
 
@@ -142,11 +142,11 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
     private func resolveClient(
         handle: String,
         configRaw: [String: Any]
-    ) throws -> PreludeSessionClient {
+    ) throws -> PreludeAuthClient {
         // Lookup-or-create runs inside the same `registryQueue.sync`
         // block on purpose: a split read-then-write would let two
         // callers for the same handle both miss the cache, both run
-        // `PreludeSessionClient.init` (which provisions DPoP key
+        // `PreludeAuthClient.init` (which provisions DPoP key
         // state via Keychain), and the second writer would win —
         // leaving the loser's keychain footprint with no Dart-side
         // reference to dispose it. Construction is on the order of
@@ -165,14 +165,14 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
         )
         // Adapter no-ops when the key is nil, so we always pass
         // it through. Hides the manifest / override choice from
-        // the session client.
+        // the auth client.
         let dispatcher: PreludeSignalsDispatcher =
             FlutterPreludeSignalsAdapter(sdkKey: signalsKey)
-        return try registryQueue.sync { () throws -> PreludeSessionClient in
+        return try registryQueue.sync { () throws -> PreludeAuthClient in
             if let existing = registry[handle] {
                 return existing
             }
-            let client = try PreludeSessionClient(
+            let client = try PreludeAuthClient(
                 endpoint: config.endpoint,
                 hostOverride: config.hostOverride,
                 signalsDispatcher: dispatcher,
@@ -231,7 +231,7 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
     }
 
     /// Resolve a Dart-side challengeID back to the cached
-    /// `StepUpChallenge`. Throws ``PreludeSessionError/invalidChallengeToken``
+    /// `StepUpChallenge`. Throws ``PreludeAuthError/invalidChallengeToken``
     /// when the challenge is unknown or has expired locally — both
     /// recover via ``requestStepUp(scope:)`` so the consumer
     /// handles a single error path.
@@ -242,7 +242,7 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
         var found: StepUpChallenge?
         registryQueue.sync { found = challenges[handle]?[challengeID] }
         guard let challenge = found else {
-            throw PreludeSessionError.invalidChallengeToken(
+            throw PreludeAuthError.invalidChallengeToken(
                 "Step-up challenge `\(challengeID)` not found. " +
                 "Pass the value returned by requestStepUp / submitStepUpOTP " +
                 "unchanged, or call requestStepUp(scope:) again."
@@ -253,9 +253,9 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
 
     // MARK: - Method dispatch
 
-    /// Route a single call to the matching `PreludeSessionClient`
+    /// Route a single call to the matching `PreludeAuthClient`
     /// async method, encode the result back to a Dart-friendly
-    /// dictionary, and surface any throw as a `PreludeSessionError`
+    /// dictionary, and surface any throw as a `PreludeAuthError`
     /// for the outer error mapper to translate.
     ///
     /// `handle` is threaded through explicitly because the
@@ -266,7 +266,7 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
         call: FlutterMethodCall,
         args: [String: Any],
         handle: String,
-        client: PreludeSessionClient
+        client: PreludeAuthClient
     ) async throws -> Any? {
         switch call.method {
         // OTP -----------------------------------------------------
@@ -371,7 +371,7 @@ public class PreludeFlutterSessionSdkPlugin: NSObject, FlutterPlugin {
                 // already minted the scoped access token.
                 evictChallenge(handle: handle, challengeID: challenge.challengeID)
                 return nil
-            } catch let error as PreludeSessionError {
+            } catch let error as PreludeAuthError {
                 // `invalidOTPCode` keeps the challenge usable up to
                 // the server's bucket limit. Any other error kills
                 // the challenge.
@@ -619,7 +619,7 @@ private enum Codec {
     /// Encode the public-surface fields only. The challenge token
     /// and expiry stay in the plugin's per-handle cache so the
     /// bearer credential never crosses the channel. See
-    /// ``PreludeFlutterSessionSdkPlugin/cacheChallenge(handle:challenge:)``.
+    /// ``PreludeFlutterAuthSdkPlugin/cacheChallenge(handle:challenge:)``.
     static func encode(challenge: StepUpChallenge) -> [String: Any] {
         [
             "status": challenge.status.rawValue,
@@ -709,7 +709,7 @@ private func missingArgs(_ method: String) -> FlutterError {
 }
 
 private func toFlutterError(_ error: Error) -> FlutterError {
-    if let e = error as? PreludeSessionError {
+    if let e = error as? PreludeAuthError {
         return mapSessionError(e)
     }
     if let e = error as? DecodeError {
@@ -722,12 +722,12 @@ private func toFlutterError(_ error: Error) -> FlutterError {
     )
 }
 
-/// Match Dart's `PreludeSessionException.fromPlatformException`
+/// Match Dart's `PreludeAuthException.fromPlatformException`
 /// switch arm-for-arm so the typed Dart exceptions hydrate
 /// correctly. `generic(code:message:)` round-trips its server
 /// code as the FlutterError code so unknown codes still get
 /// surfaced to consumers.
-private func mapSessionError(_ error: PreludeSessionError) -> FlutterError {
+private func mapSessionError(_ error: PreludeAuthError) -> FlutterError {
     switch error {
     case .badRequest(let m):
         return FlutterError(code: "bad_request", message: m, details: nil)

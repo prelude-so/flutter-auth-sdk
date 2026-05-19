@@ -1,7 +1,7 @@
 require 'fileutils'
 require 'tmpdir'
 
-# CocoaPods can't resolve apple-session-sdk (PreludeSession) or
+# CocoaPods can't resolve apple-auth-sdk (PreludeAuth) or
 # apple-sdk (Prelude) transitively from Swift Package Manager, so
 # `pod install` vendors them by hand: download the tagged source
 # release, copy `Sources/<name>/` under ./sdk/<name>/, stamp a
@@ -13,9 +13,9 @@ require 'tmpdir'
 # the other to re-download.
 #
 # Dev escape hatches:
-#   - `PRELUDE_SESSION_SDK_LOCAL_PATH` mirrors a local
-#     apple-session-sdk Swift package checkout into
-#     `sdk/PreludeSession/`.
+#   - `PRELUDE_AUTH_SDK_LOCAL_PATH` mirrors a local
+#     apple-auth-sdk Swift package checkout into
+#     `sdk/PreludeAuth/`.
 #   - `PRELUDE_SDK_LOCAL_PATH` does the same for apple-sdk's
 #     `sdk/Prelude/`. The xcframework still resolves to the
 #     pinned binary release; iterating on the C core requires
@@ -112,9 +112,9 @@ module PreludeVendor
 
   # Tactical fix-ups applied to a freshly-vendored tree.
   #
-  # `Prelude` and `PreludeSession` are separate SwiftPM modules
+  # `Prelude` and `PreludeAuth` are separate SwiftPM modules
   # upstream, but vendoring both into one CocoaPods target merges
-  # their namespaces. Until apple-sdk and apple-session-sdk each
+  # their namespaces. Until apple-sdk and apple-auth-sdk each
   # publish their own Podspec (so each becomes its own Swift
   # module), we patch the source post-extract to dodge the two
   # known conflicts: a duplicate `Version.swift` filename and a
@@ -122,7 +122,7 @@ module PreludeVendor
   #
   # TODO: drop both patches once the upstream Podspecs ship and
   # this plugin can switch to `s.dependency 'Prelude'` /
-  # `s.dependency 'PreludeSession'`.
+  # `s.dependency 'PreludeAuth'`.
   def apply_post_vendor_patches(target, dest_name)
     disambiguate_filenames(target, dest_name)
     patch_type_collisions(target, dest_name)
@@ -130,7 +130,7 @@ module PreludeVendor
 
   # Rename source files whose basename clashes across trees.
   # Xcode rejects two source files with the same basename in one
-  # target. Prelude and PreludeSession both ship a top-level
+  # target. Prelude and PreludeAuth both ship a top-level
   # `Version.swift`, so each gets prefixed in its own tree
   # (`<DestName>Version.swift`). The Swift type inside is
   # untouched and the file is referenced only by glob in
@@ -156,9 +156,9 @@ module PreludeVendor
   # longer matches the original word boundary.
   #
   # We currently rename only Prelude's `Endpoint` because (a)
-  # PreludeSession references `Endpoint` extensively across its
+  # PreludeAuth references `Endpoint` extensively across its
   # tree while Prelude touches it in one file, and (b) our
-  # bridge code uses PreludeSession's Endpoint, never
+  # bridge code uses PreludeAuth's Endpoint, never
   # Prelude's — so the rename is invisible to anything that
   # matters at the call site. If a future apple-sdk release adds
   # another colliding top-level type, extend this table.
@@ -223,39 +223,38 @@ module PreludeVendor
 end
 
 Pod::Spec.new do |s|
-  s.name             = 'prelude_flutter_session_sdk'
-  s.version          = '0.3.0'
-  s.summary          = 'Prelude Flutter Session SDK.'
+  s.name             = 'prelude_flutter_auth_sdk'
+  s.version          = '0.4.0'
+  s.summary          = 'Prelude Flutter Auth SDK.'
   s.description      = <<-DESC
-Flutter plugin that bridges Prelude session-based authentication to
-Flutter applications by wrapping the native iOS PreludeSession and
-Android session SDKs.
+Flutter plugin that bridges Prelude Auth to Flutter applications by
+wrapping the native iOS PreludeAuth and Android auth SDKs.
                        DESC
   s.homepage         = 'https://prelude.so/'
   s.license          = 'Apache-2.0'
   s.author           = 'Prelude <hello@prelude.so> (https://github.com/prelude-so)'
-  s.source           = { git: 'https://github.com/prelude-so/flutter-session-sdk.git' }
+  s.source           = { git: 'https://github.com/prelude-so/flutter-auth-sdk.git' }
   s.resource_bundles = {
-    'prelude_flutter_session_sdk_privacy' => [
-      'prelude_flutter_session_sdk/Sources/prelude_flutter_session_sdk/PrivacyInfo.xcprivacy'
+    'prelude_flutter_auth_sdk_privacy' => [
+      'prelude_flutter_auth_sdk/Sources/prelude_flutter_auth_sdk/PrivacyInfo.xcprivacy'
     ]
   }
   s.platforms        = { :ios => '15.1' }
   s.static_framework = true
   s.swift_version    = '5.7'
-  s.module_name      = 'prelude_flutter_session_sdk'
+  s.module_name      = 'prelude_flutter_auth_sdk'
 
-  apple_session_sdk_version = '0.2.0'
-  apple_sdk_version         = '0.5.1'
+  apple_auth_sdk_version = '0.3.0'
+  apple_sdk_version      = '0.5.1'
   vendor_dir = File.join(__dir__, 'sdk')
 
   PreludeVendor.vendor_swift_sources(
     vendor_dir: vendor_dir,
-    dest_name: 'PreludeSession',
-    version: apple_session_sdk_version,
-    archive_url: "https://github.com/prelude-so/apple-session-sdk/archive/refs/tags/v#{apple_session_sdk_version}.zip",
-    src_subdir: 'PreludeSession',
-    local_path: ENV['PRELUDE_SESSION_SDK_LOCAL_PATH'],
+    dest_name: 'PreludeAuth',
+    version: apple_auth_sdk_version,
+    archive_url: "https://github.com/prelude-so/apple-auth-sdk/archive/refs/tags/v#{apple_auth_sdk_version}.zip",
+    src_subdir: 'PreludeAuth',
+    local_path: ENV['PRELUDE_AUTH_SDK_LOCAL_PATH'],
   )
 
   PreludeVendor.vendor_swift_sources(
@@ -280,13 +279,13 @@ Android session SDKs.
   s.vendored_frameworks = 'sdk/core/PreludeCore.xcframework'
 
   s.source_files = [
-    'prelude_flutter_session_sdk/Sources/**/*.swift',
-    'sdk/PreludeSession/**/*.swift',
+    'prelude_flutter_auth_sdk/Sources/**/*.swift',
+    'sdk/PreludeAuth/**/*.swift',
     'sdk/Prelude/**/*.swift',
   ]
 
   # Upstream `PreludeSignalsAdapter.swift` ships with `import
-  # Prelude` because apple-session-sdk consumes apple-sdk as a
+  # Prelude` because apple-auth-sdk consumes apple-sdk as a
   # separate SwiftPM module. Under CocoaPods we vendor both
   # source trees into the same pod module, so the import won't
   # resolve. The plugin layer ships its own bridge adapter
@@ -294,7 +293,7 @@ Android session SDKs.
   # types are already in scope.
   s.exclude_files = [
     '**/*.xcprivacy',
-    'sdk/PreludeSession/Signals/PreludeSignalsAdapter.swift',
+    'sdk/PreludeAuth/Signals/PreludeSignalsAdapter.swift',
   ]
 
   s.pod_target_xcconfig = {

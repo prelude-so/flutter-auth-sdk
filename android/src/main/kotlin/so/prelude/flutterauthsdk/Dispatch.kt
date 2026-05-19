@@ -1,23 +1,23 @@
-package so.prelude.fluttersessionsdk
+package so.prelude.flutterauthsdk
 
 import io.flutter.plugin.common.MethodCall
-import so.prelude.android.session.PreludeListSessionsOptions
-import so.prelude.android.session.PreludeRevokeTarget
-import so.prelude.android.session.PreludeSessionClient
-import so.prelude.android.session.PreludeSessionError
-import so.prelude.android.session.RedactedString
-import so.prelude.android.session.changePassword
-import so.prelude.android.session.checkOTP
-import so.prelude.android.session.getPasswordCompliancy
-import so.prelude.android.session.listSessions
-import so.prelude.android.session.loginWithPassword
-import so.prelude.android.session.logout
-import so.prelude.android.session.requestStepUp
-import so.prelude.android.session.resendOTP
-import so.prelude.android.session.revokeSessions
-import so.prelude.android.session.sendStepUpOTP
-import so.prelude.android.session.startOTPLogin
-import so.prelude.android.session.submitStepUpOTP
+import so.prelude.android.auth.PreludeListSessionsOptions
+import so.prelude.android.auth.PreludeRevokeTarget
+import so.prelude.android.auth.PreludeAuthClient
+import so.prelude.android.auth.PreludeAuthError
+import so.prelude.android.auth.RedactedString
+import so.prelude.android.auth.changePassword
+import so.prelude.android.auth.checkOTP
+import so.prelude.android.auth.getPasswordCompliancy
+import so.prelude.android.auth.listSessions
+import so.prelude.android.auth.loginWithPassword
+import so.prelude.android.auth.logout
+import so.prelude.android.auth.requestStepUp
+import so.prelude.android.auth.resendOTP
+import so.prelude.android.auth.revokeSessions
+import so.prelude.android.auth.sendStepUpOTP
+import so.prelude.android.auth.startOTPLogin
+import so.prelude.android.auth.submitStepUpOTP
 
 /** Methods routed through [dispatch]. Listed up front so unknown
  *  method names short-circuit with `notImplemented` before the
@@ -34,16 +34,16 @@ internal val ASYNC_METHODS: Set<String> = setOf(
 )
 
 /**
- * Route a single call to the matching `PreludeSessionClient`
+ * Route a single call to the matching `PreludeAuthClient`
  * suspend function, encode the result back to a Dart-friendly map,
- * and surface any throw as a `PreludeSessionError` for the outer
+ * and surface any throw as a `PreludeAuthError` for the outer
  * error mapper to translate.
  */
 internal suspend fun dispatch(
     call: MethodCall,
     args: Map<*, *>,
     handle: String,
-    client: PreludeSessionClient,
+    client: PreludeAuthClient,
     registry: ClientRegistry,
 ): Any? = when (call.method) {
     // OTP -----------------------------------------------------
@@ -131,7 +131,7 @@ internal suspend fun dispatch(
 private suspend fun handleSendStepUpOTP(
     args: Map<*, *>,
     handle: String,
-    client: PreludeSessionClient,
+    client: PreludeAuthClient,
     registry: ClientRegistry,
 ): Any? {
     val challengeId = args["challengeID"] as? String
@@ -144,7 +144,7 @@ private suspend fun handleSendStepUpOTP(
 private suspend fun handleSubmitStepUpOTP(
     args: Map<*, *>,
     handle: String,
-    client: PreludeSessionClient,
+    client: PreludeAuthClient,
     registry: ClientRegistry,
 ): Any? {
     val challengeId = args["challengeID"] as? String
@@ -170,10 +170,10 @@ private suspend fun handleSubmitStepUpOTP(
             registry.evictChallenge(handle, challenge.challengeId)
             null
         }
-    } catch (e: PreludeSessionError) {
+    } catch (e: PreludeAuthError) {
         // `InvalidOTPCode` keeps the challenge usable up to the
         // server's bucket limit. Any other error kills it.
-        if (e !is PreludeSessionError.InvalidOTPCode) {
+        if (e !is PreludeAuthError.InvalidOTPCode) {
             registry.evictChallenge(handle, challenge.challengeId)
         }
         throw e

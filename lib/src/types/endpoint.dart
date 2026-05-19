@@ -1,9 +1,9 @@
-/// API endpoint for [PreludeSessionClient].
+/// API endpoint for [PreludeAuthClient].
 ///
 /// - [Endpoint.defaultEndpoint] resolves to the canonical Prelude
 ///   API address on the native side.
 /// - [Endpoint.custom] accepts an explicit URL string — typically
-///   the customer's own Prelude session endpoint, or a staging /
+///   the customer's own Prelude Auth endpoint, or a staging /
 ///   local-development URL.
 sealed class Endpoint {
   const Endpoint();

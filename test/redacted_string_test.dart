@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
+import 'package:prelude_flutter_auth_sdk/prelude_flutter_auth_sdk.dart';
 
 /// Anchors [RedactedString]'s "do not appear in logs" contract.
 /// Anything that lets the underlying secret leak via interpolation,

@@ -4,7 +4,7 @@ import Foundation
 /// the vendored `Prelude` signals type.
 ///
 /// The upstream `PreludeSignalsAdapter` declared in
-/// `apple-session-sdk` does the same thing, but ships with
+/// `apple-auth-sdk` does the same thing, but ships with
 /// `import Prelude` because that repo consumes `apple-sdk` as a
 /// separate SwiftPM module. The Flutter plugin vendors both
 /// source trees into a single CocoaPods module, so a separate
@@ -12,7 +12,7 @@ import Foundation
 /// file re-implements the adapter without that import.
 ///
 /// `nil` / empty `sdkKey` is a permissive no-op: `dispatch()`
-/// returns `nil`, the session client omits `dispatch_id` from
+/// returns `nil`, the auth client omits `dispatch_id` from
 /// the login body, and the rest of the flow proceeds as if
 /// signals weren't configured.
 struct FlutterPreludeSignalsAdapter: PreludeSignalsDispatcher, @unchecked Sendable {

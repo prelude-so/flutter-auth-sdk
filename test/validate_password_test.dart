@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:prelude_flutter_session_sdk/prelude_flutter_session_sdk.dart';
+import 'package:prelude_flutter_auth_sdk/prelude_flutter_auth_sdk.dart';
 
 /// Coverage for the Dart password classifier: Unicode-category
 /// partitioning across ASCII, non-ASCII, and astral-plane
@@ -27,7 +27,7 @@ void main() {
 
   group('validate', () {
     test('all rules pass on a typical mixed password', () {
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: 'Abcd1234!',
         against: standard,
       );
@@ -36,7 +36,7 @@ void main() {
     });
 
     test('flags missing classes individually', () {
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: 'abcdefgh', // 8 lowercase, nothing else
         against: standard,
       );
@@ -62,7 +62,7 @@ void main() {
     test('counts in Unicode code points, not UTF-16 units', () {
       // 🔒 is one code point but two UTF-16 units. iOS counts in
       // scalars; the Dart implementation must match.
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: 'Aa1🔒',
         against: standard,
       );
@@ -72,7 +72,7 @@ void main() {
 
     test('non-ASCII letter cases (Latin/Greek) hit the right buckets', () {
       // É (Lu, U+00C9), é (Ll, U+00E9), Σ (Lu, U+03A3), σ (Ll, U+03C3).
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: 'ÉéΣσ1!',
         against: const PreludePasswordCompliancy(
           minLength: 1,
@@ -98,7 +98,7 @@ void main() {
 
     test('non-ASCII decimal digits (e.g. Devanagari) count as numbers', () {
       // U+0967 DEVANAGARI DIGIT ONE is general-category Nd.
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: 'Aa१!aaaa',
         against: standard,
       );
@@ -110,7 +110,7 @@ void main() {
 
     test('maxLength == 0 is the "no upper bound" sentinel', () {
       final long = 'A1!${'a' * 200}';
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: long,
         against: const PreludePasswordCompliancy(
           minLength: 1,
@@ -129,7 +129,7 @@ void main() {
     });
 
     test('empty password reports zero on every count', () {
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: '',
         against: standard,
       );
@@ -149,7 +149,7 @@ void main() {
 
     test('symbols catch-all bucket covers punctuation and emoji', () {
       // 🚀 (astral), space, period are all "not Lu/Ll/Nd" → symbols.
-      final out = PreludeSessionClient.validate(
+      final out = PreludeAuthClient.validate(
         password: 'A1a 🚀.',
         against: const PreludePasswordCompliancy(
           minLength: 1,
