@@ -21,3 +21,5 @@ jobs:
           channel: stable
       - run: flutter pub publish --dry-run
       - run: flutter pub publish --force
+
+# (registered for workflow_dispatch)
