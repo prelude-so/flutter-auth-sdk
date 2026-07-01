@@ -1,21 +1,29 @@
 package so.prelude.flutterauthsdk
 
+import android.content.Context
 import io.flutter.plugin.common.MethodCall
+import so.prelude.android.auth.FinalizeOAuthLoginResult
 import so.prelude.android.auth.PreludeListSessionsOptions
 import so.prelude.android.auth.PreludeRevokeTarget
 import so.prelude.android.auth.PreludeAuthClient
 import so.prelude.android.auth.PreludeAuthError
 import so.prelude.android.auth.RedactedString
 import so.prelude.android.auth.changePassword
+import so.prelude.android.auth.canChangePassword
+import so.prelude.android.auth.checkOAuthEmailOTP
 import so.prelude.android.auth.checkOTP
+import so.prelude.android.auth.finalizeOAuthLogin
 import so.prelude.android.auth.getPasswordCompliancy
+import so.prelude.android.auth.initiateOAuthLogin
 import so.prelude.android.auth.listSessions
 import so.prelude.android.auth.loginWithPassword
+import so.prelude.android.auth.migrate
 import so.prelude.android.auth.logout
 import so.prelude.android.auth.requestStepUp
 import so.prelude.android.auth.resendOTP
 import so.prelude.android.auth.revokeSessions
 import so.prelude.android.auth.sendStepUpOTP
+import so.prelude.android.auth.social.loginWithOAuth
 import so.prelude.android.auth.startOTPLogin
 import so.prelude.android.auth.submitStepUpOTP
 
@@ -24,7 +32,8 @@ import so.prelude.android.auth.submitStepUpOTP
  *  plugin provisions a native client. */
 internal val ASYNC_METHODS: Set<String> = setOf(
     "startOTPLogin", "resendOTP", "checkOTP",
-    "loginWithPassword", "passwordCompliancy", "changePassword",
+    "loginWithPassword", "migrate", "passwordCompliancy", "changePassword", "canChangePassword",
+    "loginWithOAuth", "initiateOAuthLogin", "finalizeOAuthLogin", "checkOAuthEmailOTP",
     "refresh", "logout", "invalidateSession",
     "listSessions", "revokeSessions",
     "requestStepUp", "sendStepUpOTP", "submitStepUpOTP",
@@ -45,6 +54,7 @@ internal suspend fun dispatch(
     handle: String,
     client: PreludeAuthClient,
     registry: ClientRegistry,
+    context: Context,
 ): Any? = when (call.method) {
     // OTP -----------------------------------------------------
     "startOTPLogin" -> {
@@ -75,6 +85,32 @@ internal suspend fun dispatch(
         client.changePassword(RedactedString(newPassword))
         null
     }
+    "canChangePassword" -> client.canChangePassword()
+
+    // Migration -----------------------------------------------
+    "migrate" ->
+        Codec.encodeUser(client.migrate(decodeMigrateOptions(args["options"])))
+
+    // Social / OAuth login ------------------------------------
+    "loginWithOAuth" -> encodeOAuthResult(
+        client.loginWithOAuth(context, decodeOAuthLoginOptions(args["options"])),
+        handle,
+        registry,
+    )
+    "initiateOAuthLogin" -> {
+        val loginContext = client.initiateOAuthLogin(decodeInitiateOAuthLoginOptions(args["options"]))
+        registry.cacheOAuthContext(handle, loginContext)
+        loginContext.authorizationUrl.toString()
+    }
+    "finalizeOAuthLogin" -> {
+        val token = args["challengeToken"] as? String
+            ?: throw missingArg("finalizeOAuthLogin", "challengeToken")
+        val loginContext = registry.lookupOAuthContext(handle)
+        val result = client.finalizeOAuthLogin(loginContext, token)
+        registry.evictOAuthContext(handle)
+        encodeOAuthResult(result, handle, registry)
+    }
+    "checkOAuthEmailOTP" -> handleCheckOAuthEmailOTP(args, handle, client, registry)
 
     // Refresh / logout / invalidate ---------------------------
     "refresh" -> Codec.encodeUser(client.refresh())
@@ -175,6 +211,55 @@ private suspend fun handleSubmitStepUpOTP(
         // server's bucket limit. Any other error kills it.
         if (e !is PreludeAuthError.InvalidOTPCode) {
             registry.evictChallenge(handle, challenge.challengeId)
+        }
+        throw e
+    }
+}
+
+/**
+ * Encode an OAuth outcome for the channel, caching the email-link
+ * challenge so only its generated key crosses the bridge. Shared by
+ * the `loginWithOAuth` and `finalizeOAuthLogin` arms.
+ */
+private fun encodeOAuthResult(
+    result: FinalizeOAuthLoginResult,
+    handle: String,
+    registry: ClientRegistry,
+): Map<String, Any?> =
+    when (result) {
+        is FinalizeOAuthLoginResult.LoggedIn ->
+            mapOf("kind" to "logged_in", "user" to Codec.encodeUser(result.user))
+        is FinalizeOAuthLoginResult.OtpRequired -> {
+            val challengeId = registry.cacheOAuthEmailChallenge(handle, result.challenge)
+            mapOf(
+                "kind" to "otp_required",
+                "challengeID" to challengeId,
+                "email" to result.email,
+            )
+        }
+    }
+
+private suspend fun handleCheckOAuthEmailOTP(
+    args: Map<*, *>,
+    handle: String,
+    client: PreludeAuthClient,
+    registry: ClientRegistry,
+): Any? {
+    val challengeId = args["challengeID"] as? String
+    val code = args["code"] as? String
+    if (challengeId == null || code == null) {
+        throw missingArg("checkOAuthEmailOTP", "challengeID/code")
+    }
+    val challenge = registry.lookupOAuthEmailChallenge(handle, challengeId)
+    return try {
+        val user = client.checkOAuthEmailOTP(code, challenge)
+        registry.evictOAuthEmailChallenge(handle, challengeId)
+        Codec.encodeUser(user)
+    } catch (e: PreludeAuthError) {
+        // A wrong code keeps the challenge usable up to the server's
+        // bucket limit; any other error retires it.
+        if (e !is PreludeAuthError.InvalidOTPCode) {
+            registry.evictOAuthEmailChallenge(handle, challengeId)
         }
         throw e
     }

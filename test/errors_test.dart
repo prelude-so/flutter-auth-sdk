@@ -27,6 +27,7 @@ void main() {
     ('not_found', NotFoundException),
     ('conflict', ConflictException),
     ('network', NetworkException),
+    ('cancelled', CancelledException),
   ];
 
   test('every documented code hydrates the matching Dart subtype', () {

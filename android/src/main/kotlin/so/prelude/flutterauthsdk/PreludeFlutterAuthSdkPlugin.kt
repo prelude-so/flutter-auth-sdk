@@ -114,7 +114,7 @@ class PreludeFlutterAuthSdkPlugin :
         scope.launch {
             try {
                 val client = registry.resolveClient(context, handle, configRaw)
-                deliverSuccess(dispatch(call, args, handle, client, registry), result)
+                deliverSuccess(dispatch(call, args, handle, client, registry, context), result)
             } catch (e: CancellationException) {
                 // Structured-concurrency cancellation must propagate
                 // as-is. The Result is left without a reply only when

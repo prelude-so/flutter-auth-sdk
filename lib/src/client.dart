@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'platform_interface.dart';
 import 'types/endpoint.dart';
+import 'types/migrate.dart';
+import 'types/oauth.dart';
 import 'types/otp.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
@@ -240,6 +242,113 @@ class PreludeAuthClient {
       handle: _handle,
       config: _config,
       newPassword: newPassword,
+    );
+  }
+
+  /// Whether the current session can call [changePassword]
+  /// without going through step-up first — i.e. whether its
+  /// access token already carries `prld:pwd:write`.
+  ///
+  /// Call before driving a "change password" UI to decide
+  /// whether to prompt for step-up. Throws if the session
+  /// refresh fails; returns `false` when the refreshed token
+  /// lacks the scope or the claim is missing/malformed.
+  Future<bool> canChangePassword() {
+    _ensureNotDisposed();
+    return _platform.canChangePassword(handle: _handle, config: _config);
+  }
+
+  // ------------------------------------------------------------
+  // Migration
+  // ------------------------------------------------------------
+
+  /// Exchange a legacy bearer token for a Prelude session,
+  /// returning the authenticated user.
+  ///
+  /// Safe to call on every launch: a valid cached session returns
+  /// immediately without spending the legacy token, and concurrent
+  /// callers share a single in-flight exchange.
+  Future<PreludeUser> migrate(MigrateOptions options) {
+    _ensureNotDisposed();
+    return _platform.migrate(
+      handle: _handle,
+      config: _config,
+      options: options,
+    );
+  }
+
+  // ------------------------------------------------------------
+  // Social / OAuth login
+  // ------------------------------------------------------------
+
+  /// Authenticate against an identity provider in a system web
+  /// session and establish a session. One-shot: presents the
+  /// provider page natively and redeems the callback.
+  ///
+  /// Only one login can be presented at a time; a concurrent call
+  /// throws [ConflictException]. A dismissed page throws
+  /// [CancelledException].
+  ///
+  /// [OAuthLoginOptions.redirectUri] must use the app's custom URL
+  /// scheme; an `http`/`https` URI throws
+  /// [InvalidConfigurationException] before any network call.
+  Future<FinalizeOAuthLoginResult> loginWithOAuth(OAuthLoginOptions options) {
+    _ensureNotDisposed();
+    return _platform.loginWithOAuth(
+      handle: _handle,
+      config: _config,
+      options: options,
+    );
+  }
+
+  /// Request a provider authorization URL to present in a web
+  /// authentication context yourself.
+  ///
+  /// Generates a PKCE pair held natively until
+  /// [finalizeOAuthLogin] redeems it; a new call supersedes any
+  /// unredeemed earlier attempt. Pair with [finalizeOAuthLogin]
+  /// when the app presents its own web session instead of
+  /// [loginWithOAuth].
+  Future<Uri> initiateOAuthLogin(InitiateOAuthLoginOptions options) {
+    _ensureNotDisposed();
+    return _platform.initiateOAuthLogin(
+      handle: _handle,
+      config: _config,
+      options: options,
+    );
+  }
+
+  /// Redeem the `challenge_token` delivered to the redirect URI
+  /// and establish a session.
+  ///
+  /// Throws [MissingChallengeTokenException] for an empty token
+  /// and [InvalidChallengeTokenException] for a malformed one.
+  Future<FinalizeOAuthLoginResult> finalizeOAuthLogin(String challengeToken) {
+    _ensureNotDisposed();
+    return _platform.finalizeOAuthLogin(
+      handle: _handle,
+      config: _config,
+      challengeToken: challengeToken,
+    );
+  }
+
+  /// Complete an OAuth login whose provider email needs verifying.
+  ///
+  /// Pass the [OAuthEmailChallenge] from an [OAuthOtpRequired]
+  /// result together with the [code] the user received. Returns the
+  /// authenticated user. The challenge is single-use; an
+  /// [InvalidOTPCodeException] leaves it valid for another attempt,
+  /// any other error retires it.
+  Future<PreludeUser> checkOAuthEmailOTP(
+    OAuthEmailChallenge challenge,
+    String code,
+  ) {
+    _ensureNotDisposed();
+    return _platform.checkOAuthEmailOTP(
+      handle: _handle,
+      config: _config,
+      challenge: challenge,
+      code: code,
     );
   }
 

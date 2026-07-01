@@ -2,6 +2,8 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'method_channel.dart';
 import 'types/endpoint.dart';
+import 'types/migrate.dart';
+import 'types/oauth.dart';
 import 'types/otp.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
@@ -94,6 +96,50 @@ abstract class PreludeAuthClientPlatform extends PlatformInterface {
     required String handle,
     required ClientConfig config,
     required RedactedString newPassword,
+  });
+
+  Future<bool> canChangePassword({
+    required String handle,
+    required ClientConfig config,
+  });
+
+  // ------------------------------------------------------------
+  // Migration
+  // ------------------------------------------------------------
+
+  Future<PreludeUser> migrate({
+    required String handle,
+    required ClientConfig config,
+    required MigrateOptions options,
+  });
+
+  // ------------------------------------------------------------
+  // Social / OAuth login
+  // ------------------------------------------------------------
+
+  Future<FinalizeOAuthLoginResult> loginWithOAuth({
+    required String handle,
+    required ClientConfig config,
+    required OAuthLoginOptions options,
+  });
+
+  Future<Uri> initiateOAuthLogin({
+    required String handle,
+    required ClientConfig config,
+    required InitiateOAuthLoginOptions options,
+  });
+
+  Future<FinalizeOAuthLoginResult> finalizeOAuthLogin({
+    required String handle,
+    required ClientConfig config,
+    required String challengeToken,
+  });
+
+  Future<PreludeUser> checkOAuthEmailOTP({
+    required String handle,
+    required ClientConfig config,
+    required OAuthEmailChallenge challenge,
+    required String code,
   });
 
   // ------------------------------------------------------------

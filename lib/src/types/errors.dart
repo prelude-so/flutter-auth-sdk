@@ -62,8 +62,18 @@ sealed class PreludeAuthException implements Exception {
         return NotFoundException(message);
       case 'conflict':
         return ConflictException(message);
+      case 'saml_login_required':
+        return SAMLLoginRequiredException(message);
+      case 'passkey_not_configured':
+        return PasskeyNotConfiguredException(message);
+      case 'passkey_registration_failed':
+        return PasskeyRegistrationFailedException(message);
+      case 'passkey_step_unavailable':
+        return PasskeyStepUnavailableException(message);
       case 'network':
         return NetworkException(message);
+      case 'cancelled':
+        return const CancelledException();
     }
     return PreludeAuthGenericException(code: e.code, message: message);
   }
@@ -186,11 +196,52 @@ class ConflictException extends PreludeAuthException {
   String get code => 'conflict';
 }
 
+/// OTP or other login method refused because the identifier's email
+/// domain is enforced to use SAML SSO. Recover by restarting the
+/// flow via the SAML initiate endpoint.
+class SAMLLoginRequiredException extends PreludeAuthException {
+  const SAMLLoginRequiredException(super.message);
+  @override
+  String get code => 'saml_login_required';
+}
+
+/// App has no PasskeyConfig set (Relying Party identity is missing).
+/// Route the user to a different MFA factor.
+class PasskeyNotConfiguredException extends PreludeAuthException {
+  const PasskeyNotConfiguredException(super.message);
+  @override
+  String get code => 'passkey_not_configured';
+}
+
+/// Server rejected the attestation from the registration ceremony —
+/// bad challenge, bad origin, or malformed authenticator response.
+class PasskeyRegistrationFailedException extends PreludeAuthException {
+  const PasskeyRegistrationFailedException(super.message);
+  @override
+  String get code => 'passkey_registration_failed';
+}
+
+/// verify_passkey step cannot be driven — no credentials, assertion
+/// failed, or no PasskeyConfig. Fall back to a different step.
+class PasskeyStepUnavailableException extends PreludeAuthException {
+  const PasskeyStepUnavailableException(super.message);
+  @override
+  String get code => 'passkey_step_unavailable';
+}
+
 /// Transport / TLS / DNS failure.
 class NetworkException extends PreludeAuthException {
   const NetworkException(super.message);
   @override
   String get code => 'network';
+}
+
+/// The person dismissed the login UI before completing it. Not a
+/// failure — typically swallowed by the caller.
+class CancelledException extends PreludeAuthException {
+  const CancelledException() : super('Cancelled');
+  @override
+  String get code => 'cancelled';
 }
 
 /// Catch-all for codes the SDK doesn't yet model. Lets the bridge

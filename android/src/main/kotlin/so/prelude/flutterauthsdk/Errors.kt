@@ -61,6 +61,8 @@ private fun mapSessionError(error: PreludeAuthError): FlutterErrorPayload =
             FlutterErrorPayload("refresh_failed", error.message.orEmpty())
         is PreludeAuthError.Timeout ->
             FlutterErrorPayload("timeout", "Request timed out")
+        is PreludeAuthError.Cancelled ->
+            FlutterErrorPayload("cancelled", "Request cancelled")
         is PreludeAuthError.InvalidConfiguration ->
             FlutterErrorPayload("invalid_configuration", error.message.orEmpty())
         is PreludeAuthError.InvalidPassword ->
@@ -71,20 +73,26 @@ private fun mapSessionError(error: PreludeAuthError): FlutterErrorPayload =
             FlutterErrorPayload("insufficient_scope", error.message.orEmpty())
         is PreludeAuthError.NotFound ->
             FlutterErrorPayload("not_found", error.message.orEmpty())
+        is PreludeAuthError.SamlLoginRequired ->
+            FlutterErrorPayload("saml_login_required", error.message.orEmpty())
+        // Dart doesn't model the passkey errors natively; surface them
+        // through the generic catch-all with stable codes so consumers
+        // can still branch on them.
+        is PreludeAuthError.PasskeyNotConfigured ->
+            FlutterErrorPayload("passkey_not_configured", error.message.orEmpty())
+        is PreludeAuthError.PasskeyRegistrationFailed ->
+            FlutterErrorPayload("passkey_registration_failed", error.message.orEmpty())
+        is PreludeAuthError.PasskeyStepUnavailable ->
+            FlutterErrorPayload("passkey_step_unavailable", error.message.orEmpty())
         is PreludeAuthError.Conflict ->
             FlutterErrorPayload("conflict", error.message.orEmpty())
         is PreludeAuthError.Network ->
             FlutterErrorPayload("network", error.cause?.message ?: error.message.orEmpty())
-        // Dart doesn't model these natively; surface through the
+        // Dart doesn't model this natively; surface through the
         // generic catch-all with a stable code so consumers can
-        // still branch on them when needed.
+        // still branch on it when needed.
         is PreludeAuthError.CryptoFailure ->
             FlutterErrorPayload("crypto_failure", error.cause?.message ?: error.message.orEmpty())
-        is PreludeAuthError.SignalsDispatchFailed ->
-            FlutterErrorPayload(
-                "signals_dispatch_failed",
-                error.cause?.message ?: error.message.orEmpty(),
-            )
         is PreludeAuthError.Generic ->
             FlutterErrorPayload(error.code, error.displayMessage)
     }
