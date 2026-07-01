@@ -2,10 +2,13 @@ package so.prelude.flutterauthsdk
 
 import android.content.Context
 import android.content.pm.PackageManager
+import so.prelude.android.auth.OAuthEmailChallenge
+import so.prelude.android.auth.OAuthLoginContext
 import so.prelude.android.auth.PreludeAuthClient
 import so.prelude.android.auth.PreludeAuthError
 import so.prelude.android.auth.PreludeStepUpChallenge
 import so.prelude.android.auth.PreludeStepUpStatus
+import java.util.UUID
 
 /**
  * `AndroidManifest.xml` meta-data key the SDK reads for the
@@ -47,6 +50,31 @@ internal class ClientRegistry {
     private val clients: MutableMap<String, PreludeAuthClient> = mutableMapOf()
     private val challenges: MutableMap<String, MutableMap<String, PreludeStepUpChallenge>> =
         mutableMapOf()
+
+    /**
+     * Per-handle in-flight OAuth login context, one slot per handle.
+     * Holds the authorize step's PKCE verifier between initiate and
+     * finalize so it never crosses the channel; a later initiate
+     * supersedes an unredeemed earlier attempt.
+     */
+    private val oauthContexts: MutableMap<String, OAuthLoginContext> = mutableMapOf()
+
+    /**
+     * One cached OAuth email-link challenge plus the id minted for it,
+     * so a superseded challenge is rejected rather than silently
+     * redeemed against a newer attempt.
+     */
+    private data class CachedOAuthEmailChallenge(val id: String, val challenge: OAuthEmailChallenge)
+
+    /**
+     * Per-handle in-flight OAuth email-link challenge, one slot per
+     * handle. The challenge has no server-side id, so the plugin mints
+     * one and the Dart side echoes it back on `checkOAuthEmailOTP`; a
+     * new attempt supersedes any earlier one and the verification token
+     * never crosses the channel.
+     */
+    private val oauthEmailChallenges: MutableMap<String, CachedOAuthEmailChallenge> =
+        mutableMapOf()
     private val lock = Any()
 
     /**
@@ -81,11 +109,13 @@ internal class ClientRegistry {
             client
         }
 
-    /** Drop the client and any cached challenges for [handle]. */
+    /** Drop the client and any cached state for [handle]. */
     fun dispose(handle: String) {
         synchronized(lock) {
             clients.remove(handle)
             challenges.remove(handle)
+            oauthContexts.remove(handle)
+            oauthEmailChallenges.remove(handle)
         }
     }
 
@@ -94,6 +124,8 @@ internal class ClientRegistry {
         synchronized(lock) {
             clients.clear()
             challenges.clear()
+            oauthContexts.clear()
+            oauthEmailChallenges.clear()
         }
     }
 
@@ -137,5 +169,86 @@ internal class ClientRegistry {
                 "Pass the value returned by requestStepUp / submitStepUpOTP " +
                 "unchanged, or call requestStepUp(scope:) again.",
         )
+    }
+
+    /**
+     * Store the latest in-flight OAuth context for [handle], replacing
+     * any unredeemed earlier attempt.
+     */
+    fun cacheOAuthContext(handle: String, context: OAuthLoginContext) {
+        synchronized(lock) {
+            // Don't resurrect entries for a handle that's already been
+            // disposed; the writer raced the dispose call.
+            if (clients[handle] == null) return
+            oauthContexts[handle] = context
+        }
+    }
+
+    /**
+     * Resolve [handle]'s in-flight OAuth context for finalize. Throws
+     * when no initiate is pending — the caller recovers by starting
+     * the flow again.
+     */
+    fun lookupOAuthContext(handle: String): OAuthLoginContext {
+        val found = synchronized(lock) { oauthContexts[handle] }
+        return found ?: throw PreludeAuthError.InvalidChallengeToken(
+            "No in-flight OAuth login for this client. " +
+                "Call initiateOAuthLogin before finalizeOAuthLogin.",
+        )
+    }
+
+    fun evictOAuthContext(handle: String) {
+        synchronized(lock) { oauthContexts.remove(handle) }
+    }
+
+    /**
+     * Cache [challenge] under a freshly minted id and return it. The
+     * Dart side echoes the id back on `checkOAuthEmailOTP`. A new
+     * attempt supersedes any unredeemed earlier one — only one
+     * challenge is ever in flight per handle.
+     *
+     * Throws `InvalidChallengeToken` when [handle] was disposed mid-flow:
+     * the entry can't be cached, so returning its id would hand back a
+     * value that `lookupOAuthEmailChallenge` could never resolve.
+     */
+    fun cacheOAuthEmailChallenge(handle: String, challenge: OAuthEmailChallenge): String {
+        val challengeId = UUID.randomUUID().toString()
+        synchronized(lock) {
+            if (clients[handle] == null) {
+                throw PreludeAuthError.InvalidChallengeToken(
+                    "Client handle has been disposed. Restart the OAuth login.",
+                )
+            }
+            oauthEmailChallenges[handle] = CachedOAuthEmailChallenge(challengeId, challenge)
+        }
+        return challengeId
+    }
+
+    /**
+     * Resolve a Dart-side challengeID back to the cached challenge.
+     * Throws `InvalidChallengeToken` when it's unknown or has been
+     * superseded — the caller recovers by restarting the OAuth login.
+     */
+    fun lookupOAuthEmailChallenge(handle: String, challengeId: String): OAuthEmailChallenge {
+        val found = synchronized(lock) {
+            oauthEmailChallenges[handle]?.takeIf { it.id == challengeId }
+        }
+        return found?.challenge ?: throw PreludeAuthError.InvalidChallengeToken(
+            "OAuth email challenge `$challengeId` not found. " +
+                "Pass the value returned by loginWithOAuth / finalizeOAuthLogin " +
+                "unchanged, or restart the OAuth login.",
+        )
+    }
+
+    /**
+     * Evict only when [challengeId] still owns the slot, so a late
+     * check on a superseded id can't drop a newer attempt's challenge.
+     */
+    fun evictOAuthEmailChallenge(handle: String, challengeId: String) {
+        synchronized(lock) {
+            if (oauthEmailChallenges[handle]?.id == challengeId) {
+                oauthEmailChallenges.remove(handle)
+            }
+        }
     }
 }

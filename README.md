@@ -8,7 +8,7 @@ It is provided as a regular Flutter plugin that you can add as a dependency in y
 
 ```yaml
 dependencies:
-  prelude_flutter_auth_sdk: ^0.4.0
+  prelude_flutter_auth_sdk: ^0.6.0
 ```
 
 ```bash
@@ -55,6 +55,56 @@ final user = await client.loginWithPassword(
   ),
 );
 ```
+
+#### Social login (Google)
+
+Open the provider's page in a system web session and establish a session in one call. The provider page collects credentials — no email/password input in your UI. The `redirectUri` must use your app's custom URL scheme and be allowlisted in your project's OAuth configuration.
+
+```dart
+final result = await client.loginWithOAuth(
+  OAuthLoginOptions(
+    provider: OAuthProvider.google,
+    redirectUri: 'myapp://oauth-callback',
+  ),
+);
+
+switch (result) {
+  case OAuthLoggedIn(:final user):
+    // signed in
+  case OAuthOtpRequired(:final challenge, :final email):
+    // provider email unverified (e.g. Microsoft) — a code was sent
+    // to `email`; complete the login with the code the user types:
+    final user = await client.checkOAuthEmailOTP(challenge, code);
+}
+```
+
+A dismissed page throws `CancelledException` — typically swallowed rather than surfaced as an error. For apps that present their own web session, `initiateOAuthLogin` returns the authorization `Uri` and `finalizeOAuthLogin(challengeToken)` redeems the callback.
+
+Platform setup:
+
+- **iOS** — no extra configuration; the web session intercepts the redirect scheme directly.
+- **Android** — social login opens a Chrome Custom Tab. Add `androidx.browser` to `android/app/build.gradle.kts` and declare the redirect target in `android/app/src/main/AndroidManifest.xml`, with the `data` scheme matching your `redirectUri`:
+
+  ```kotlin
+  dependencies {
+      implementation("androidx.browser:browser:1.8.0")
+  }
+  ```
+
+  ```xml
+  <activity
+      android:name="so.prelude.android.auth.social.OAuthRedirectActivity"
+      android:exported="true"
+      android:launchMode="singleTask"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar">
+      <intent-filter>
+          <action android:name="android.intent.action.VIEW" />
+          <category android:name="android.intent.category.DEFAULT" />
+          <category android:name="android.intent.category.BROWSABLE" />
+          <data android:scheme="myapp" />
+      </intent-filter>
+  </activity>
+  ```
 
 #### Password validation
 

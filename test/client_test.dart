@@ -95,6 +95,22 @@ void main() {
     });
   });
 
+  group('canChangePassword', () {
+    test('bridges to platform and returns the bool', () async {
+      fake.canChangePasswordReply = true;
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      expect(await client.canChangePassword(), isTrue);
+      final call = fake.calls.single;
+      expect(call.method, 'canChangePassword');
+    });
+
+    test('returns false when the platform says so', () async {
+      fake.canChangePasswordReply = false;
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      expect(await client.canChangePassword(), isFalse);
+    });
+  });
+
   group('listSessions', () {
     test('passes options through and returns the platform response', () async {
       final view = PreludeSessionView(
@@ -173,6 +189,29 @@ void main() {
     });
   });
 
+  group('migrate', () {
+    test('forwards options and returns the platform user', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      final user = await client.migrate(MigrateOptions('legacy-token'));
+      expect(user.accessToken, isNotEmpty);
+      final call = fake.calls.single;
+      expect(call.method, 'migrate');
+      final opts = call.args['options']! as MigrateOptions;
+      expect(opts.token.value, 'legacy-token');
+    });
+
+    test('keeps the legacy token out of toString', () {
+      expect(MigrateOptions('legacy-token').toString(), isNot(contains('legacy-token')));
+    });
+
+    test('throws StateError after dispose without hitting the platform', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      await client.dispose();
+      expect(() => client.migrate(MigrateOptions('t')), throwsStateError);
+      expect(fake.calls.where((c) => c.method == 'migrate'), isEmpty);
+    });
+  });
+
   group('step-up', () {
     test('requestStepUp returns the platform challenge without firing /otp', () async {
       final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
@@ -239,6 +278,78 @@ void main() {
       expect(calls, hasLength(1));
     });
   });
+
+  group('oauth', () {
+    test('loginWithOAuth forwards options and returns the result', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      final result = await client.loginWithOAuth(
+        const OAuthLoginOptions(
+          provider: OAuthProvider.google,
+          redirectUri: 'prelude-demo://oauth-callback',
+        ),
+      );
+      expect(result, isA<OAuthLoggedIn>());
+      final call = fake.calls.singleWhere((c) => c.method == 'loginWithOAuth');
+      final opts = call.args['options']! as OAuthLoginOptions;
+      expect(opts.provider, OAuthProvider.google);
+      expect(opts.redirectUri, 'prelude-demo://oauth-callback');
+    });
+
+    test('initiateOAuthLogin returns the parsed authorization URL', () async {
+      fake.initiateOAuthReply = Uri.parse('https://accounts.example/auth?x=1');
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      final url = await client.initiateOAuthLogin(
+        const InitiateOAuthLoginOptions(
+          provider: OAuthProvider.google,
+          redirectUri: 'prelude-demo://oauth-callback',
+        ),
+      );
+      expect(url, Uri.parse('https://accounts.example/auth?x=1'));
+    });
+
+    test('finalizeOAuthLogin forwards the challenge token', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      await client.finalizeOAuthLogin('chal_42');
+      final call = fake.calls.singleWhere((c) => c.method == 'finalizeOAuthLogin');
+      expect(call.args['challengeToken'], 'chal_42');
+    });
+
+    test('checkOAuthEmailOTP forwards the challenge handle and code', () async {
+      fake.oauthReply = FinalizeOAuthLoginResult.fromJson({
+        'kind': 'otp_required',
+        'challengeID': 'cid_99',
+        'email': 'a@b.c',
+      });
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      final pending = await client.loginWithOAuth(
+        const OAuthLoginOptions(
+          provider: OAuthProvider.microsoft,
+          redirectUri: 'prelude-demo://oauth-callback',
+        ),
+      ) as OAuthOtpRequired;
+
+      await client.checkOAuthEmailOTP(pending.challenge, '123456');
+      final call = fake.calls.singleWhere((c) => c.method == 'checkOAuthEmailOTP');
+      expect((call.args['challenge']! as OAuthEmailChallenge).challengeID, 'cid_99');
+      expect(call.args['code'], '123456');
+    });
+
+    test('oauth calls throw after dispose without hitting the platform', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      await client.dispose();
+      expect(
+        () => client.loginWithOAuth(
+          const OAuthLoginOptions(
+            provider: OAuthProvider.google,
+            redirectUri: 'prelude-demo://oauth-callback',
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(() => client.finalizeOAuthLogin('x'), throwsStateError);
+      expect(fake.calls.where((c) => c.method == 'loginWithOAuth'), isEmpty);
+    });
+  });
 }
 
 /// Records every platform call and replays canned responses where
@@ -301,6 +412,16 @@ class _RecordingPlatform extends PreludeAuthClientPlatform
   }
 
   @override
+  Future<PreludeUser> migrate({
+    required String handle,
+    required ClientConfig config,
+    required MigrateOptions options,
+  }) async {
+    _record('migrate', handle: handle, args: {'options': options});
+    return _stubUser();
+  }
+
+  @override
   Future<PreludeUser> loginWithPassword({
     required String handle,
     required ClientConfig config,
@@ -330,6 +451,73 @@ class _RecordingPlatform extends PreludeAuthClientPlatform
       handle: handle,
       args: {'newPassword': newPassword},
     );
+  }
+
+  /// Replayed by [canChangePassword].
+  bool canChangePasswordReply = false;
+
+  @override
+  Future<bool> canChangePassword({
+    required String handle,
+    required ClientConfig config,
+  }) async {
+    _record('canChangePassword', handle: handle);
+    return canChangePasswordReply;
+  }
+
+  /// Replayed by [loginWithOAuth] / [finalizeOAuthLogin].
+  FinalizeOAuthLoginResult oauthReply = OAuthLoggedIn(_stubUser());
+
+  /// Replayed by [initiateOAuthLogin].
+  Uri initiateOAuthReply = Uri.parse('https://accounts.example/auth');
+
+  @override
+  Future<FinalizeOAuthLoginResult> loginWithOAuth({
+    required String handle,
+    required ClientConfig config,
+    required OAuthLoginOptions options,
+  }) async {
+    _record('loginWithOAuth', handle: handle, args: {'options': options});
+    return oauthReply;
+  }
+
+  @override
+  Future<Uri> initiateOAuthLogin({
+    required String handle,
+    required ClientConfig config,
+    required InitiateOAuthLoginOptions options,
+  }) async {
+    _record('initiateOAuthLogin', handle: handle, args: {'options': options});
+    return initiateOAuthReply;
+  }
+
+  @override
+  Future<FinalizeOAuthLoginResult> finalizeOAuthLogin({
+    required String handle,
+    required ClientConfig config,
+    required String challengeToken,
+  }) async {
+    _record(
+      'finalizeOAuthLogin',
+      handle: handle,
+      args: {'challengeToken': challengeToken},
+    );
+    return oauthReply;
+  }
+
+  @override
+  Future<PreludeUser> checkOAuthEmailOTP({
+    required String handle,
+    required ClientConfig config,
+    required OAuthEmailChallenge challenge,
+    required String code,
+  }) async {
+    _record(
+      'checkOAuthEmailOTP',
+      handle: handle,
+      args: {'challenge': challenge, 'code': code},
+    );
+    return _stubUser();
   }
 
   @override

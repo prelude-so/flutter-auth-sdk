@@ -126,6 +126,27 @@ module PreludeVendor
   def apply_post_vendor_patches(target, dest_name)
     disambiguate_filenames(target, dest_name)
     patch_type_collisions(target, dest_name)
+    strip_sibling_module_imports(target, dest_name)
+  end
+
+  # Strip `import <Module>` of sibling Prelude trees. Upstream they
+  # are separate SwiftPM modules, but CocoaPods merges every
+  # vendored tree into one pod module, so the import won't resolve —
+  # the types are already in scope. Keyed by `dest_name`; idempotent
+  # (a tree already stripped is left unchanged).
+  SIBLING_MODULE_IMPORTS = {
+    'PreludeAuthSocial' => %w[PreludeAuth].freeze,
+  }.freeze
+
+  def strip_sibling_module_imports(target, dest_name)
+    modules = SIBLING_MODULE_IMPORTS[dest_name]
+    return unless modules
+    pattern = /^[ \t]*import[ \t]+(?:#{modules.map { |m| Regexp.escape(m) }.join('|')})[ \t]*\r?\n/
+    Dir.glob(File.join(target, '**', '*.swift')).each do |path|
+      text = File.read(path)
+      patched = text.gsub(pattern, '')
+      File.write(path, patched) if patched != text
+    end
   end
 
   # Rename source files whose basename clashes across trees.
@@ -224,7 +245,7 @@ end
 
 Pod::Spec.new do |s|
   s.name             = 'prelude_flutter_auth_sdk'
-  s.version          = '0.4.0'
+  s.version          = '0.6.0'
   s.summary          = 'Prelude Flutter Auth SDK.'
   s.description      = <<-DESC
 Flutter plugin that bridges Prelude Auth to Flutter applications by
@@ -244,7 +265,7 @@ wrapping the native iOS PreludeAuth and Android auth SDKs.
   s.swift_version    = '5.7'
   s.module_name      = 'prelude_flutter_auth_sdk'
 
-  apple_auth_sdk_version = '0.3.0'
+  apple_auth_sdk_version = '0.6.0'
   apple_sdk_version      = '0.5.1'
   vendor_dir = File.join(__dir__, 'sdk')
 
@@ -254,6 +275,18 @@ wrapping the native iOS PreludeAuth and Android auth SDKs.
     version: apple_auth_sdk_version,
     archive_url: "https://github.com/prelude-so/apple-auth-sdk/archive/refs/tags/v#{apple_auth_sdk_version}.zip",
     src_subdir: 'PreludeAuth',
+    local_path: ENV['PRELUDE_AUTH_SDK_LOCAL_PATH'],
+  )
+
+  # Social login (OAuth web flow). Same source release as
+  # PreludeAuth; the `import PreludeAuth` lines are stripped post-
+  # vendor since both trees merge into this one pod module.
+  PreludeVendor.vendor_swift_sources(
+    vendor_dir: vendor_dir,
+    dest_name: 'PreludeAuthSocial',
+    version: apple_auth_sdk_version,
+    archive_url: "https://github.com/prelude-so/apple-auth-sdk/archive/refs/tags/v#{apple_auth_sdk_version}.zip",
+    src_subdir: 'PreludeAuthSocial',
     local_path: ENV['PRELUDE_AUTH_SDK_LOCAL_PATH'],
   )
 
@@ -281,6 +314,7 @@ wrapping the native iOS PreludeAuth and Android auth SDKs.
   s.source_files = [
     'prelude_flutter_auth_sdk/Sources/**/*.swift',
     'sdk/PreludeAuth/**/*.swift',
+    'sdk/PreludeAuthSocial/**/*.swift',
     'sdk/Prelude/**/*.swift',
   ]
 

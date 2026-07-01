@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import 'platform_interface.dart';
 import 'types/errors.dart';
+import 'types/migrate.dart';
+import 'types/oauth.dart';
 import 'types/otp.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
@@ -133,6 +135,105 @@ class MethodChannelPreludeAuthClient extends PreludeAuthClientPlatform {
       // point inside the SDK where the secret needs to be plain.
       'newPassword': newPassword.value,
     });
+  }
+
+  @override
+  Future<bool> canChangePassword({
+    required String handle,
+    required ClientConfig config,
+  }) async {
+    // Native side always returns a `Bool` — null is a bridge
+    // contract violation, not a "no". Surface it as `StateError`
+    // so a real bug doesn't masquerade as a false-negative.
+    final raw = await _invoke<bool>('canChangePassword', _baseArgs(handle, config));
+    if (raw == null) {
+      throw StateError(
+        'PreludeAuth bridge returned null for `canChangePassword`; '
+        'expected a non-null bool.',
+      );
+    }
+    return raw;
+  }
+
+  @override
+  Future<PreludeUser> migrate({
+    required String handle,
+    required ClientConfig config,
+    required MigrateOptions options,
+  }) async {
+    final raw = await _invokeMap('migrate', {
+      ..._baseArgs(handle, config),
+      'options': options.toJson(),
+    });
+    return PreludeUser.fromJson(raw);
+  }
+
+  @override
+  Future<FinalizeOAuthLoginResult> loginWithOAuth({
+    required String handle,
+    required ClientConfig config,
+    required OAuthLoginOptions options,
+  }) async {
+    final raw = await _invokeMap('loginWithOAuth', {
+      ..._baseArgs(handle, config),
+      'options': options.toJson(),
+    });
+    return FinalizeOAuthLoginResult.fromJson(raw);
+  }
+
+  @override
+  Future<Uri> initiateOAuthLogin({
+    required String handle,
+    required ClientConfig config,
+    required InitiateOAuthLoginOptions options,
+  }) async {
+    // Native side always returns a non-null URL string; a null
+    // reply is a bridge contract violation, not an Auth-API
+    // failure. Surface as StateError so it isn't swallowed as a
+    // PreludeAuthException.
+    final raw = await _invoke<String>('initiateOAuthLogin', {
+      ..._baseArgs(handle, config),
+      'options': options.toJson(),
+    });
+    if (raw == null) {
+      throw StateError(
+        'PreludeAuth bridge returned null for `initiateOAuthLogin`; '
+        'expected a non-null URL string.',
+      );
+    }
+    return Uri.parse(raw);
+  }
+
+  @override
+  Future<FinalizeOAuthLoginResult> finalizeOAuthLogin({
+    required String handle,
+    required ClientConfig config,
+    required String challengeToken,
+  }) async {
+    final raw = await _invokeMap('finalizeOAuthLogin', {
+      ..._baseArgs(handle, config),
+      'challengeToken': challengeToken,
+    });
+    return FinalizeOAuthLoginResult.fromJson(raw);
+  }
+
+  @override
+  Future<PreludeUser> checkOAuthEmailOTP({
+    required String handle,
+    required ClientConfig config,
+    required OAuthEmailChallenge challenge,
+    required String code,
+  }) async {
+    // Only the [challengeID] travels over the channel; the
+    // verification token lives in the native plugin's per-handle
+    // cache. The bridge resolves it via [challengeID] before
+    // firing /otp/check.
+    final raw = await _invokeMap('checkOAuthEmailOTP', {
+      ..._baseArgs(handle, config),
+      'challengeID': challenge.challengeID,
+      'code': code,
+    });
+    return PreludeUser.fromJson(raw);
   }
 
   @override

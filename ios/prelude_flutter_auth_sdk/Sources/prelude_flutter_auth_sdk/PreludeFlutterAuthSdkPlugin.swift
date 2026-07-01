@@ -32,10 +32,35 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
     /// here so the challenge JWT never leaves the iOS process.
     private var challenges: [String: [String: StepUpChallenge]] = [:]
 
-    /// Single serial queue covering both ``registry`` and
-    /// ``challenges``. Their lifetimes are coupled — disposing a
-    /// handle should evict both in lockstep — so a shared queue
-    /// keeps that invariant cheap to express.
+    /// Per-handle in-flight OAuth login context, one slot per handle.
+    /// Filled by ``initiateOAuthLogin`` with the authorize step's PKCE
+    /// verifier; read by ``finalizeOAuthLogin`` to redeem the callback;
+    /// evicted on finalize, on ``dispose``, and superseded by a later
+    /// initiate. Held here so the verifier never crosses the channel.
+    private var oauthContexts: [String: OAuthLoginContext] = [:]
+
+    /// One cached OAuth email-link challenge plus the id minted for
+    /// it, so a superseded ``OAuthEmailChallenge`` is rejected rather
+    /// than silently redeemed against a newer attempt.
+    private struct CachedOAuthEmailChallenge {
+        let id: String
+        let challenge: OAuthEmailChallenge
+    }
+
+    /// Per-handle in-flight OAuth email-link challenge, one slot per
+    /// handle. Filled when ``loginWithOAuth`` / ``finalizeOAuthLogin``
+    /// yield `.otpRequired`; read by ``checkOAuthEmailOTP`` to resolve
+    /// the verification token; superseded by a later attempt and
+    /// cleared on completion, on non-OTP errors, and on ``dispose``.
+    /// The Dart-side ``OAuthEmailChallenge`` carries only the minted
+    /// id, so the verification token never leaves the iOS process.
+    private var oauthEmailChallenges: [String: CachedOAuthEmailChallenge] = [:]
+
+    /// Single serial queue covering ``registry``, ``challenges``,
+    /// ``oauthContexts``, and ``oauthEmailChallenges``. Their
+    /// lifetimes are coupled — disposing a handle should evict all
+    /// four in lockstep — so a shared queue keeps that invariant
+    /// cheap to express.
     private let registryQueue = DispatchQueue(
         label: "so.prelude.flutterauthsdk.registry"
     )
@@ -56,7 +81,8 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
     /// a typo doesn't deserve them).
     private static let asyncMethods: Set<String> = [
         "startOTPLogin", "resendOTP", "checkOTP",
-        "loginWithPassword", "passwordCompliancy", "changePassword",
+        "loginWithPassword", "migrate", "passwordCompliancy", "changePassword", "canChangePassword",
+        "loginWithOAuth", "initiateOAuthLogin", "finalizeOAuthLogin", "checkOAuthEmailOTP",
         "refresh", "logout", "invalidateSession",
         "listSessions", "revokeSessions",
         "requestStepUp", "sendStepUpOTP", "submitStepUpOTP",
@@ -194,6 +220,8 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
         registryQueue.sync {
             registry.removeValue(forKey: handle)
             challenges.removeValue(forKey: handle)
+            oauthContexts.removeValue(forKey: handle)
+            oauthEmailChallenges.removeValue(forKey: handle)
         }
         result(nil)
     }
@@ -251,6 +279,122 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
         return challenge
     }
 
+    // MARK: - OAuth context cache
+
+    /// Store the latest in-flight OAuth context for `handle`,
+    /// replacing any unredeemed earlier attempt.
+    private func cacheOAuthContext(handle: String, context: OAuthLoginContext) {
+        registryQueue.sync {
+            // Don't resurrect entries for a handle that's already
+            // been disposed; the writer raced the dispose call.
+            guard registry[handle] != nil else { return }
+            oauthContexts[handle] = context
+        }
+    }
+
+    /// Resolve `handle`'s in-flight OAuth context for finalize. Throws
+    /// when no initiate is pending — the caller recovers by starting
+    /// the flow again.
+    private func lookupOAuthContext(handle: String) throws -> OAuthLoginContext {
+        var found: OAuthLoginContext?
+        registryQueue.sync { found = oauthContexts[handle] }
+        guard let context = found else {
+            throw PreludeAuthError.invalidChallengeToken(
+                "No in-flight OAuth login for this client. " +
+                "Call initiateOAuthLogin before finalizeOAuthLogin."
+            )
+        }
+        return context
+    }
+
+    private func evictOAuthContext(handle: String) {
+        registryQueue.sync { oauthContexts.removeValue(forKey: handle) }
+    }
+
+    // MARK: - OAuth email-link challenge cache
+
+    /// Cache `challenge` under a freshly minted id and return it. The
+    /// challenge has no server-side id of its own, so we mint one;
+    /// the Dart side echoes it back on ``checkOAuthEmailOTP``. A new
+    /// attempt supersedes any unredeemed earlier one — only one
+    /// challenge is ever in flight per handle.
+    ///
+    /// Throws ``PreludeAuthError/invalidChallengeToken`` when `handle`
+    /// was disposed mid-flow: the entry can't be cached, so returning
+    /// its id would hand back a value that
+    /// ``lookupOAuthEmailChallenge(handle:challengeID:)`` could never
+    /// resolve.
+    private func cacheOAuthEmailChallenge(
+        handle: String,
+        challenge: OAuthEmailChallenge
+    ) throws -> String {
+        let challengeID = UUID().uuidString
+        try registryQueue.sync {
+            guard registry[handle] != nil else {
+                throw PreludeAuthError.invalidChallengeToken(
+                    "Client handle has been disposed. Restart the OAuth login."
+                )
+            }
+            oauthEmailChallenges[handle] = CachedOAuthEmailChallenge(
+                id: challengeID,
+                challenge: challenge
+            )
+        }
+        return challengeID
+    }
+
+    /// Resolve a Dart-side challengeID back to the cached challenge.
+    /// Throws ``PreludeAuthError/invalidChallengeToken`` when it's
+    /// unknown or has been superseded — the caller recovers by
+    /// restarting the OAuth flow.
+    private func lookupOAuthEmailChallenge(
+        handle: String,
+        challengeID: String
+    ) throws -> OAuthEmailChallenge {
+        var found: CachedOAuthEmailChallenge?
+        registryQueue.sync { found = oauthEmailChallenges[handle] }
+        guard let cached = found, cached.id == challengeID else {
+            throw PreludeAuthError.invalidChallengeToken(
+                "OAuth email challenge `\(challengeID)` not found. " +
+                "Pass the value returned by loginWithOAuth / finalizeOAuthLogin " +
+                "unchanged, or restart the OAuth login."
+            )
+        }
+        return cached.challenge
+    }
+
+    /// Evict only when `challengeID` still owns the slot, so a late
+    /// check on a superseded id can't drop a newer attempt's challenge.
+    private func evictOAuthEmailChallenge(handle: String, challengeID: String) {
+        registryQueue.sync {
+            guard oauthEmailChallenges[handle]?.id == challengeID else { return }
+            oauthEmailChallenges.removeValue(forKey: handle)
+        }
+    }
+
+    /// Encode an OAuth outcome for the channel, caching the
+    /// email-link challenge so only its generated key crosses the
+    /// bridge. Shared by ``loginWithOAuth`` and ``finalizeOAuthLogin``.
+    private func encodeOAuthResult(
+        _ result: FinalizeOAuthLoginResult,
+        handle: String
+    ) throws -> [String: Any] {
+        switch result {
+        case .loggedIn(let user):
+            return ["kind": "logged_in", "user": Codec.encode(user: user)]
+        case .otpRequired(let challenge, let email):
+            let challengeID = try cacheOAuthEmailChallenge(
+                handle: handle,
+                challenge: challenge
+            )
+            return [
+                "kind": "otp_required",
+                "challengeID": challengeID,
+                "email": email ?? NSNull(),
+            ]
+        }
+    }
+
     // MARK: - Method dispatch
 
     /// Route a single call to the matching `PreludeAuthClient`
@@ -300,6 +444,54 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
             }
             try await client.changePassword(RedactedString(newPassword))
             return nil
+        case "canChangePassword":
+            return try await client.canChangePassword()
+
+        // Migration -----------------------------------------------
+        case "migrate":
+            let options = try decodeMigrateOptions(args["options"])
+            let user = try await client.migrate(options)
+            return Codec.encode(user: user)
+
+        // Social / OAuth login ------------------------------------
+        case "loginWithOAuth":
+            let options = try decodeOAuthLoginOptions(args["options"])
+            let result = try await client.loginWithOAuth(options)
+            return try encodeOAuthResult(result, handle: handle)
+        case "initiateOAuthLogin":
+            let options = try decodeInitiateOAuthLoginOptions(args["options"])
+            let loginContext = try await client.initiateOAuthLogin(options)
+            cacheOAuthContext(handle: handle, context: loginContext)
+            return loginContext.authorizationURL.absoluteString
+        case "finalizeOAuthLogin":
+            guard let token = args["challengeToken"] as? String else {
+                throw missingArgError(call.method, "challengeToken")
+            }
+            let loginContext = try lookupOAuthContext(handle: handle)
+            let result = try await client.finalizeOAuthLogin(loginContext, challengeToken: token)
+            evictOAuthContext(handle: handle)
+            return try encodeOAuthResult(result, handle: handle)
+        case "checkOAuthEmailOTP":
+            guard let challengeID = args["challengeID"] as? String,
+                  let code = args["code"] as? String
+            else {
+                throw missingArgError(call.method, "challengeID/code")
+            }
+            let challenge = try lookupOAuthEmailChallenge(handle: handle, challengeID: challengeID)
+            do {
+                let user = try await client.checkOAuthEmailOTP(code, resuming: challenge)
+                evictOAuthEmailChallenge(handle: handle, challengeID: challengeID)
+                return Codec.encode(user: user)
+            } catch let error as PreludeAuthError {
+                // A wrong code keeps the challenge usable up to the
+                // server's bucket limit; any other error retires it.
+                if case .invalidOTPCode = error {
+                    // keep cached
+                } else {
+                    evictOAuthEmailChallenge(handle: handle, challengeID: challengeID)
+                }
+                throw error
+            }
 
         // Refresh / logout / invalidate ---------------------------
         case "refresh":
@@ -488,6 +680,40 @@ private func decodeStartOTPLoginOptions(_ raw: Any?) throws -> StartOTPLoginOpti
     return StartOTPLoginOptions(identifier: identifier, loginConfigID: loginConfigID)
 }
 
+private func decodeOAuthProvider(_ raw: Any?) throws -> OAuthProvider {
+    guard let wire = raw as? String, let provider = OAuthProvider(rawValue: wire) else {
+        throw decodeError("Unknown OAuthProvider: \(raw ?? "nil")")
+    }
+    return provider
+}
+
+private func decodeOAuthLoginOptions(_ raw: Any?) throws -> OAuthLoginOptions {
+    guard let json = raw as? [String: Any],
+          let redirect = json["redirectUri"] as? String,
+          let url = URL(string: redirect)
+    else {
+        throw decodeError("OAuthLoginOptions: malformed payload")
+    }
+    let ephemeral = (json["prefersEphemeralSession"] as? Bool) ?? false
+    return OAuthLoginOptions(
+        provider: try decodeOAuthProvider(json["provider"]),
+        redirectURI: url,
+        prefersEphemeralSession: ephemeral
+    )
+}
+
+private func decodeInitiateOAuthLoginOptions(_ raw: Any?) throws -> InitiateOAuthLoginOptions {
+    guard let json = raw as? [String: Any],
+          let redirect = json["redirectUri"] as? String
+    else {
+        throw decodeError("InitiateOAuthLoginOptions: malformed payload")
+    }
+    return InitiateOAuthLoginOptions(
+        provider: try decodeOAuthProvider(json["provider"]),
+        redirectURI: redirect
+    )
+}
+
 private func decodeListSessionsOptions(_ raw: Any?) throws -> ListSessionsOptions {
     // Empty / nil maps fall through to ListSessionsOptions() so the
     // server's defaults apply without a Dart-side change.
@@ -553,6 +779,15 @@ private func decodeLoginWithPasswordOptions(_ raw: Any?) throws -> LoginWithPass
     // with no String overload — the two paths diverge at the iOS
     // SDK API, not here.
     return LoginWithPasswordOptions(emailAddress: email, password: password)
+}
+
+private func decodeMigrateOptions(_ raw: Any?) throws -> MigrateOptions {
+    guard let json = raw as? [String: Any],
+          let token = json["token"] as? String
+    else {
+        throw decodeError("MigrateOptions: malformed payload")
+    }
+    return MigrateOptions(token: token)
 }
 
 // MARK: - Codec (Swift ↔ Dart-friendly dictionaries)
@@ -751,6 +986,8 @@ private func mapSessionError(_ error: PreludeAuthError) -> FlutterError {
         return FlutterError(code: "refresh_failed", message: m, details: nil)
     case .timeout:
         return FlutterError(code: "timeout", message: "Request timed out", details: nil)
+    case .cancelled:
+        return FlutterError(code: "cancelled", message: "Request cancelled", details: nil)
     case .invalidConfiguration(let m):
         return FlutterError(code: "invalid_configuration", message: m, details: nil)
     case .invalidPassword(let m):
@@ -763,6 +1000,14 @@ private func mapSessionError(_ error: PreludeAuthError) -> FlutterError {
         return FlutterError(code: "not_found", message: m, details: nil)
     case .conflict(let m):
         return FlutterError(code: "conflict", message: m, details: nil)
+    case .samlLoginRequired(let m):
+        return FlutterError(code: "saml_login_required", message: m, details: nil)
+    case .passkeyNotConfigured(let m):
+        return FlutterError(code: "passkey_not_configured", message: m, details: nil)
+    case .passkeyRegistrationFailed(let m):
+        return FlutterError(code: "passkey_registration_failed", message: m, details: nil)
+    case .passkeyStepUnavailable(let m):
+        return FlutterError(code: "passkey_step_unavailable", message: m, details: nil)
     case .network(let underlying):
         return FlutterError(
             code: "network",

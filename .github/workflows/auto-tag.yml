@@ -1,4 +1,4 @@
-name: Auto-tag and publish on version change
+name: Auto-tag and dispatch publish on version change
 on:
   push:
     branches:
@@ -10,67 +10,57 @@ jobs:
     permissions:
       contents: write
     outputs:
-      tag_created: ${{ steps.check_tag.outputs.tag_created }}
+      tag: ${{ steps.tag.outputs.tag }}
+      created: ${{ steps.tag.outputs.created }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Read version from pubspec.yaml
-        id: read_version
+      - name: Tag from pubspec.yaml version
+        id: tag
         run: |
+          set -euo pipefail
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
-          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Check if tag already exists
-        id: check_tag
-        run: |
-          TAG="v${{ steps.read_version.outputs.VERSION }}"
+          TAG="v${VERSION}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "tag_created=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag_created=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists; nothing to do."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-
-      - name: Configure git identity
-        if: steps.check_tag.outputs.tag_created == 'true'
-        # `git tag -a` writes a tagger entry into the annotated tag,
-        # which requires a committer identity. The runner doesn't
-        # have one by default, so configure one scoped to this
-        # checkout (no --global) before tagging.
-        run: |
           git config user.name  "Prelude Tech [bot]"
           git config user.email "hello@prelude.so"
-
-      - name: Create and push tag
-        if: steps.check_tag.outputs.tag_created == 'true'
-        env:
-          TAG: v${{ steps.read_version.outputs.VERSION }}
-        run: |
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
 
-  publish:
+  # Default GITHUB_TOKEN tag pushes don't fire downstream workflows
+  # (GitHub anti-loop policy), so we dispatch publish.yml explicitly
+  # instead of relying on a `push: tags:` trigger. workflow_dispatch
+  # is the one trigger GITHUB_TOKEN can fan out to.
+  dispatch-publish:
     needs: auto-tag
-    if: needs.auto-tag.outputs.tag_created == 'true'
+    if: needs.auto-tag.outputs.created == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write # Required for OIDC authentication with pub.dev
+      actions: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: subosito/flutter-action@v2
+      - name: Trigger publish.yml with the new tag
+        uses: actions/github-script@v7
+        env:
+          # Pass through env to keep the tag value out of the
+          # inline-JS literal — avoids quote-injection if the
+          # version ever grows a stray ' or `.
+          TAG: ${{ needs.auto-tag.outputs.tag }}
         with:
-          channel: stable
-      # Belt-and-suspenders: the monorepo's
-      # `sdk-validate-flutter-auth-sdk` workflow already runs
-      # analyze + test on every PR that touches the package, so
-      # main of this public repo should always be in a publishable
-      # state. Re-running here means a hand-edit on main, or a
-      # bypass of the validate gate, can't push a broken version
-      # to pub.dev.
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
-      - run: flutter pub publish --dry-run
-      - run: flutter pub publish --force
+          script: |
+            const tag = process.env.TAG;
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'publish.yml',
+              ref: tag,             // run publish.yml from the tagged commit
+              inputs: { tag },      // pub.dev matches this against tag pattern
+            });

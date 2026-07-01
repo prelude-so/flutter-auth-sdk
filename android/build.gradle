@@ -1,5 +1,5 @@
 group = "so.prelude.flutterauthsdk"
-version = "0.4.0"
+version = "0.6.0"
 
 buildscript {
     ext.kotlin_version = "2.1.0"
@@ -52,7 +52,7 @@ android {
         // Native auth SDK. Pinned to the patch version so the
         // bridge contract this plugin compiles against is the same
         // one consumers resolve transitively at app build time.
-        implementation("so.prelude.android:auth-sdk:0.3.0")
+        implementation("so.prelude.android:auth-sdk:0.6.0")
         // Anti-fraud signals. Wrapped by PreludeSignalsAdapter and
         // stamped onto unauthenticated logins when an SDK key is
         // configured (manifest meta-data or Dart override). Pin

@@ -4,6 +4,25 @@ Notable changes to the Prelude Flutter Auth SDK.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-07-01
+
+### Added
+- Social login. `loginWithOAuth(OAuthLoginOptions)` presents the provider page in a system web session and establishes a session; `initiateOAuthLogin` / `finalizeOAuthLogin` back it for apps that present the page themselves. Unverified provider emails surface as `OAuthOtpRequired`. New types: `OAuthProvider`, `OAuthLoginOptions`, `InitiateOAuthLoginOptions`, `FinalizeOAuthLoginResult` (`OAuthLoggedIn` / `OAuthOtpRequired`), and `CancelledException` for a dismissed page.
+- `checkOAuthEmailOTP(OAuthEmailChallenge, String)` completes an OAuth login when the provider's email must be verified (e.g. Microsoft). `OAuthOtpRequired` now carries an `OAuthEmailChallenge` handle; redeem it with the code the user receives. The verification token stays in the native plugin's per-handle cache, so concurrent logins stay isolated and the bearer credential never crosses the channel.
+- On Android, social login opens a Chrome Custom Tab: apps add `androidx.browser` and declare `OAuthRedirectActivity` with their redirect scheme. On iOS no extra config is needed.
+
+### Changed
+- Bumps the iOS dependency to `PreludeAuth` `0.6.0` and the Android dependency to `so.prelude.android:auth-sdk:0.6.0`, the native releases that add social login and OAuth email-link completion.
+
+## [0.5.0] - 2026-06-12
+
+### Added
+- `migrate(MigrateOptions)` — exchange a legacy bearer token for a Prelude session via PKCE-bound `/migration` ⇒ `/login/finalize`. Idempotent (a cached session short-circuits) and single-flight (concurrent callers share one exchange), so the legacy token is spent at most once. The token is wrapped in a `RedactedString` so the options object never leaks it through `toString`.
+- `canChangePassword()` — returns `true` when the current session already carries `prld:pwd:write`, so a UI can skip step-up before `changePassword`.
+
+### Changed
+- Bumps the iOS dependency to `PreludeAuth` `0.4.0` and the Android dependency to `so.prelude.android:auth-sdk:0.5.0`. The native `0.4.0` release also brings per-domain DPoP clock-skew correction, best-effort (non-blocking) signals dispatch, and race-safe cached-session accessors.
+
 ## [0.4.0] - 2026-05-18
 
 First release under the new package name. Continues the history of

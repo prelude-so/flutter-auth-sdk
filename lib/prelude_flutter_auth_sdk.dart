@@ -9,6 +9,7 @@ export 'src/types/endpoint.dart' show Endpoint;
 export 'src/types/errors.dart'
     show
         BadRequestException,
+        CancelledException,
         ConflictException,
         ExpiredChallengeTokenException,
         ForbiddenException,
@@ -25,6 +26,7 @@ export 'src/types/errors.dart'
         PreludeAuthGenericException,
         RateLimitedException,
         RefreshFailedException,
+        SAMLLoginRequiredException,
         TimeoutException,
         TokenReusedException,
         UnauthorizedException;
@@ -40,6 +42,16 @@ export 'src/types/json_value.dart'
         PreludeJSONObject,
         PreludeJSONString,
         PreludeJSONValue;
+export 'src/types/migrate.dart' show MigrateOptions;
+export 'src/types/oauth.dart'
+    show
+        FinalizeOAuthLoginResult,
+        InitiateOAuthLoginOptions,
+        OAuthEmailChallenge,
+        OAuthLoggedIn,
+        OAuthLoginOptions,
+        OAuthOtpRequired,
+        OAuthProvider;
 export 'src/types/otp.dart' show StartOTPLoginOptions;
 export 'src/types/password.dart'
     show
