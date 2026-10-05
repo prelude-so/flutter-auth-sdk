@@ -381,4 +381,97 @@ void main() {
       }
     });
   });
+
+  group('passkey', () {
+    // Both plugins encode timestamps as unix seconds and omit an
+    // unset nickname / empty transports list.
+    Map<Object?, Object?> credentialWire({Object? nickname = 'iPhone'}) => {
+      'credentialID': 'cred_1',
+      'nickname': nickname,
+      'transports': const ['internal', 'hybrid'],
+      'backupState': true,
+      'createdAt': 1750000000,
+      'lastUsedAt': 1750000600,
+    };
+
+    test('decodes a credential, seconds to DateTime', () {
+      final c = PreludePasskeyCredential.fromJson(credentialWire());
+
+      expect(c.credentialID, 'cred_1');
+      expect(c.nickname, 'iPhone');
+      expect(c.transports, ['internal', 'hybrid']);
+      expect(c.backupState, isTrue);
+      expect(c.createdAt, DateTime.utc(2025, 6, 15, 15, 6, 40));
+      expect(c.lastUsedAt.difference(c.createdAt), const Duration(minutes: 10));
+    });
+
+    test('tolerates an absent nickname and missing transports', () {
+      final wire = credentialWire(nickname: null)..remove('transports');
+      final c = PreludePasskeyCredential.fromJson(wire);
+
+      expect(c.nickname, isNull);
+      expect(c.transports, isEmpty);
+    });
+
+    test('rejects a non-integer timestamp', () {
+      final wire = credentialWire()..['createdAt'] = '1750000000';
+
+      expect(
+        () => PreludePasskeyCredential.fromJson(wire),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('decodes a registration result', () {
+      final result = PasskeyRegistrationResult.fromJson({
+        'credential': credentialWire(),
+        'alreadyRegistered': true,
+      });
+
+      expect(result.credential.credentialID, 'cred_1');
+      expect(result.alreadyRegistered, isTrue);
+    });
+
+    test('credentials compare by value, transports included', () {
+      final a = PreludePasskeyCredential.fromJson(credentialWire());
+      final b = PreludePasskeyCredential.fromJson(credentialWire());
+      final other = PreludePasskeyCredential.fromJson(
+        credentialWire()..['transports'] = const ['internal'],
+      );
+
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a, isNot(other));
+      expect({a, b}, hasLength(1));
+    });
+
+    test('registration results compare by value', () {
+      Map<Object?, Object?> wire({bool alreadyRegistered = true}) => {
+        'credential': credentialWire(),
+        'alreadyRegistered': alreadyRegistered,
+      };
+
+      final registered = PasskeyRegistrationResult.fromJson(wire());
+      final again = PasskeyRegistrationResult.fromJson(wire());
+      final fresh = PasskeyRegistrationResult.fromJson(
+        wire(alreadyRegistered: false),
+      );
+
+      expect(registered, again);
+      expect(registered.hashCode, again.hashCode);
+      expect(registered, isNot(fresh));
+    });
+
+    test('login options default to a modal ceremony', () {
+      expect(const PasskeyLoginOptions().toJson(), {'autofill': false});
+    });
+
+    test('register options carry nulls through for server defaults', () {
+      expect(const RegisterPasskeyOptions(username: 'a@b.c').toJson(), {
+        'username': 'a@b.c',
+        'displayName': null,
+        'nickname': null,
+      });
+    });
+  });
 }

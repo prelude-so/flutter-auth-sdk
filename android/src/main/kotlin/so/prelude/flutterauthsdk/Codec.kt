@@ -2,6 +2,8 @@ package so.prelude.flutterauthsdk
 
 import so.prelude.android.auth.PreludeJSONValue
 import so.prelude.android.auth.PreludeListSessionsResponse
+import so.prelude.android.auth.PreludePasskeyCredential
+import so.prelude.android.auth.PreludePasskeyRegistration
 import so.prelude.android.auth.PreludePasswordCompliancy
 import so.prelude.android.auth.PreludeProfile
 import so.prelude.android.auth.PreludeSessionView
@@ -71,6 +73,22 @@ internal object Codec {
             "challengeID" to c.challengeId,
             "currentStep" to c.currentStep,
             "requestedScope" to c.requestedScope,
+        )
+
+    fun encodeCredential(c: PreludePasskeyCredential): Map<String, Any?> =
+        mapOf(
+            "credentialID" to c.credentialId,
+            "nickname" to c.nickname,
+            "transports" to c.transports,
+            "backupState" to c.backupState,
+            "createdAt" to c.createdAt,
+            "lastUsedAt" to c.lastUsedAt,
+        )
+
+    fun encodeRegistration(r: PreludePasskeyRegistration): Map<String, Any?> =
+        mapOf(
+            "credential" to encodeCredential(r.credential),
+            "alreadyRegistered" to r.alreadyRegistered,
         )
 
     /**

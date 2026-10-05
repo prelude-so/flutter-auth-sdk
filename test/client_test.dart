@@ -350,6 +350,52 @@ void main() {
       expect(fake.calls.where((c) => c.method == 'loginWithOAuth'), isEmpty);
     });
   });
+
+  group('passkey', () {
+    test('loginWithPasskey defaults to a non-autofill ceremony', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      await client.loginWithPasskey();
+
+      final call = fake.calls.single;
+      expect(call.method, 'loginWithPasskey');
+      expect((call.args['options']! as PasskeyLoginOptions).autofill, isFalse);
+    });
+
+    test('registerPasskey forwards the options verbatim', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      await client.registerPasskey(
+        const RegisterPasskeyOptions(
+          username: 'a@b.c',
+          displayName: 'Alice',
+          nickname: 'iPhone',
+        ),
+      );
+
+      final options = fake.calls.single.args['options']! as RegisterPasskeyOptions;
+      expect(options.username, 'a@b.c');
+      expect(options.displayName, 'Alice');
+      expect(options.nickname, 'iPhone');
+    });
+
+    test('management calls carry only the credential id', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      await client.renamePasskey('cred_1', 'Work phone');
+      await client.deletePasskey('cred_1');
+
+      expect(fake.calls.map((c) => c.method), [
+        'renamePasskey',
+        'deletePasskey',
+      ]);
+      expect(fake.calls.last.args, {'credentialID': 'cred_1'});
+    });
+
+    test('post-dispose passkey calls throw StateError', () async {
+      final client = PreludeAuthClient(endpoint: const Endpoint.custom('https://x'));
+      await client.dispose();
+      expect(() => client.loginWithPasskey(), throwsStateError);
+      expect(() => client.listPasskeys(), throwsStateError);
+    });
+  });
 }
 
 /// Records every platform call and replays canned responses where
@@ -625,6 +671,82 @@ class _RecordingPlatform extends PreludeAuthClientPlatform
   }
 
   @override
+  Future<StepUpChallenge?> continueStepUpWithPasskey({
+    required String handle,
+    required ClientConfig config,
+    required StepUpChallenge challenge,
+  }) async {
+    _record(
+      'continueStepUpWithPasskey',
+      handle: handle,
+      args: {'challenge': challenge},
+    );
+    return null;
+  }
+
+  /// Replayed by [listPasskeys].
+  List<PreludePasskeyCredential> listPasskeysReply = const [];
+
+  @override
+  Future<PasskeyRegistrationResult> registerPasskey({
+    required String handle,
+    required ClientConfig config,
+    required RegisterPasskeyOptions options,
+  }) async {
+    _record('registerPasskey', handle: handle, args: {'options': options});
+    return PasskeyRegistrationResult(
+      credential: _stubCredential(),
+      alreadyRegistered: false,
+    );
+  }
+
+  @override
+  Future<PreludeUser> loginWithPasskey({
+    required String handle,
+    required ClientConfig config,
+    required PasskeyLoginOptions options,
+  }) async {
+    _record('loginWithPasskey', handle: handle, args: {'options': options});
+    return _stubUser();
+  }
+
+  @override
+  Future<List<PreludePasskeyCredential>> listPasskeys({
+    required String handle,
+    required ClientConfig config,
+  }) async {
+    _record('listPasskeys', handle: handle);
+    return listPasskeysReply;
+  }
+
+  @override
+  Future<void> renamePasskey({
+    required String handle,
+    required ClientConfig config,
+    required String credentialID,
+    required String nickname,
+  }) async {
+    _record(
+      'renamePasskey',
+      handle: handle,
+      args: {'credentialID': credentialID, 'nickname': nickname},
+    );
+  }
+
+  @override
+  Future<void> deletePasskey({
+    required String handle,
+    required ClientConfig config,
+    required String credentialID,
+  }) async {
+    _record(
+      'deletePasskey',
+      handle: handle,
+      args: {'credentialID': credentialID},
+    );
+  }
+
+  @override
   Future<PreludeProfile?> getProfile({
     required String handle,
     required ClientConfig config,
@@ -660,6 +782,15 @@ class _RecordingPlatform extends PreludeAuthClientPlatform
     return null;
   }
 }
+
+PreludePasskeyCredential _stubCredential() => PreludePasskeyCredential(
+      credentialID: 'cred_1',
+      nickname: 'iPhone',
+      transports: const ['internal'],
+      backupState: true,
+      createdAt: DateTime.utc(2026, 1, 1),
+      lastUsedAt: DateTime.utc(2026, 1, 1),
+    );
 
 PreludeUser _stubUser() => const PreludeUser(
       accessToken: 'eyJ.stub.token',

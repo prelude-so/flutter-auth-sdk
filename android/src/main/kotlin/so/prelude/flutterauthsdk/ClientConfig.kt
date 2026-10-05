@@ -8,6 +8,7 @@ import so.prelude.android.auth.PreludeIdentifier
 import so.prelude.android.auth.PreludeIdentifierType
 import so.prelude.android.auth.PreludeListSessionsOptions
 import so.prelude.android.auth.PreludeRevokeTarget
+import so.prelude.android.auth.RegisterPasskeyOptions
 import so.prelude.android.auth.PreludeAuthError
 import so.prelude.android.auth.RedactedString
 import so.prelude.android.auth.StartOTPLoginOptions
@@ -96,6 +97,21 @@ internal fun decodeLoginWithPasswordOptions(raw: Any?): LoginWithPasswordOptions
     return LoginWithPasswordOptions(
         identifier = email,
         password = RedactedString(password),
+    )
+}
+
+internal fun decodeRegisterPasskeyOptions(raw: Any?): RegisterPasskeyOptions {
+    val json = raw as? Map<*, *>
+        ?: throw decodeError("RegisterPasskeyOptions: malformed payload")
+    val username = json["username"] as? String
+        ?: throw decodeError("RegisterPasskeyOptions: malformed payload")
+    // `autofill` from PasskeyLoginOptions has no Android analogue —
+    // the Credential Manager sheet is the only presentation mode —
+    // so the login options carry nothing to decode.
+    return RegisterPasskeyOptions(
+        username = username,
+        displayName = json["displayName"] as? String,
+        nickname = json["nickname"] as? String,
     )
 }
 

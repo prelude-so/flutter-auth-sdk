@@ -65,8 +65,12 @@ private fun mapSessionError(error: PreludeAuthError): FlutterErrorPayload =
             FlutterErrorPayload("cancelled", "Request cancelled")
         is PreludeAuthError.InvalidConfiguration ->
             FlutterErrorPayload("invalid_configuration", error.message.orEmpty())
+        is PreludeAuthError.NoLoginConfig ->
+            FlutterErrorPayload("no_login_config", error.message.orEmpty())
         is PreludeAuthError.InvalidPassword ->
             FlutterErrorPayload("invalid_password", error.message.orEmpty())
+        is PreludeAuthError.PasswordNotSet ->
+            FlutterErrorPayload("password_not_set", error.message.orEmpty())
         is PreludeAuthError.Forbidden ->
             FlutterErrorPayload("forbidden", error.message.orEmpty())
         is PreludeAuthError.InsufficientScope ->
@@ -75,15 +79,16 @@ private fun mapSessionError(error: PreludeAuthError): FlutterErrorPayload =
             FlutterErrorPayload("not_found", error.message.orEmpty())
         is PreludeAuthError.SamlLoginRequired ->
             FlutterErrorPayload("saml_login_required", error.message.orEmpty())
-        // Dart doesn't model the passkey errors natively; surface them
-        // through the generic catch-all with stable codes so consumers
-        // can still branch on them.
         is PreludeAuthError.PasskeyNotConfigured ->
             FlutterErrorPayload("passkey_not_configured", error.message.orEmpty())
         is PreludeAuthError.PasskeyRegistrationFailed ->
             FlutterErrorPayload("passkey_registration_failed", error.message.orEmpty())
         is PreludeAuthError.PasskeyStepUnavailable ->
             FlutterErrorPayload("passkey_step_unavailable", error.message.orEmpty())
+        is PreludeAuthError.PasskeyNotSupported ->
+            FlutterErrorPayload("passkey_not_supported", error.message.orEmpty())
+        is PreludeAuthError.PasskeyAlreadyRegistered ->
+            FlutterErrorPayload("passkey_already_registered", error.message.orEmpty())
         is PreludeAuthError.Conflict ->
             FlutterErrorPayload("conflict", error.message.orEmpty())
         is PreludeAuthError.Network ->

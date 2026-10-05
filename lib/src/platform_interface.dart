@@ -5,6 +5,7 @@ import 'types/endpoint.dart';
 import 'types/migrate.dart';
 import 'types/oauth.dart';
 import 'types/otp.dart';
+import 'types/passkey.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
 import 'types/redacted_string.dart';
@@ -201,6 +202,46 @@ abstract class PreludeAuthClientPlatform extends PlatformInterface {
   Future<StepUpChallenge?> getActiveStepUp({
     required String handle,
     required ClientConfig config,
+  });
+
+  Future<StepUpChallenge?> continueStepUpWithPasskey({
+    required String handle,
+    required ClientConfig config,
+    required StepUpChallenge challenge,
+  });
+
+  // ------------------------------------------------------------
+  // Passkey
+  // ------------------------------------------------------------
+
+  Future<PasskeyRegistrationResult> registerPasskey({
+    required String handle,
+    required ClientConfig config,
+    required RegisterPasskeyOptions options,
+  });
+
+  Future<PreludeUser> loginWithPasskey({
+    required String handle,
+    required ClientConfig config,
+    required PasskeyLoginOptions options,
+  });
+
+  Future<List<PreludePasskeyCredential>> listPasskeys({
+    required String handle,
+    required ClientConfig config,
+  });
+
+  Future<void> renamePasskey({
+    required String handle,
+    required ClientConfig config,
+    required String credentialID,
+    required String nickname,
+  });
+
+  Future<void> deletePasskey({
+    required String handle,
+    required ClientConfig config,
+    required String credentialID,
   });
 
   // ------------------------------------------------------------

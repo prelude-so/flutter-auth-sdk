@@ -86,7 +86,9 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
         "refresh", "logout", "invalidateSession",
         "listSessions", "revokeSessions",
         "requestStepUp", "sendStepUpOTP", "submitStepUpOTP",
-        "getActiveStepUp",
+        "getActiveStepUp", "continueStepUpWithPasskey",
+        "registerPasskey", "loginWithPasskey",
+        "listPasskeys", "renamePasskey", "deletePasskey",
         "getProfile", "getSessionID",
         "getAccessToken", "getAccessTokenExpiresAt",
     ]
@@ -277,6 +279,42 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
             )
         }
         return challenge
+    }
+
+    /// Run one step-up `step` against `challenge` and reconcile the
+    /// cache with its outcome: swap in the challenge the step
+    /// returns, or drop the entry once the flow completes. On failure
+    /// `keepsChallenge` decides whether the challenge survives for
+    /// another attempt.
+    private func advanceStepUp(
+        handle: String,
+        challenge: StepUpChallenge,
+        keepsChallenge: (PreludeAuthError) -> Bool,
+        step: () async throws -> StepUpChallenge?
+    ) async throws -> [String: Any]? {
+        let next: StepUpChallenge?
+        do {
+            next = try await step()
+        } catch let error as PreludeAuthError {
+            if !keepsChallenge(error) {
+                evictChallenge(handle: handle, challengeID: challenge.challengeID)
+            }
+            throw error
+        }
+        guard let next else {
+            // Flow completed: post-completion refresh has already
+            // minted the scoped access token.
+            evictChallenge(handle: handle, challengeID: challenge.challengeID)
+            return nil
+        }
+        // Insert before evicting so a concurrent reader observing
+        // under the new ID never sees an empty slot during a
+        // multi-step transition.
+        cacheChallenge(handle: handle, challenge: next)
+        if next.challengeID != challenge.challengeID {
+            evictChallenge(handle: handle, challengeID: challenge.challengeID)
+        }
+        return Codec.encode(challenge: next)
     }
 
     // MARK: - OAuth context cache
@@ -547,33 +585,68 @@ public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
                 throw missingArgError(call.method, "challengeID/code")
             }
             let challenge = try lookupChallenge(handle: handle, challengeID: challengeID)
-            do {
-                let next = try await client.submitStepUpOTP(challenge, code: code)
-                if let next {
-                    // Insert before evicting so a concurrent reader
-                    // observing under the new ID never sees an empty
-                    // slot during a multi-step transition.
-                    cacheChallenge(handle: handle, challenge: next)
-                    if next.challengeID != challenge.challengeID {
-                        evictChallenge(handle: handle, challengeID: challenge.challengeID)
-                    }
-                    return Codec.encode(challenge: next)
-                }
-                // Flow completed: post-completion refresh has
-                // already minted the scoped access token.
-                evictChallenge(handle: handle, challengeID: challenge.challengeID)
-                return nil
-            } catch let error as PreludeAuthError {
+            return try await advanceStepUp(
+                handle: handle,
+                challenge: challenge,
                 // `invalidOTPCode` keeps the challenge usable up to
                 // the server's bucket limit. Any other error kills
                 // the challenge.
-                if case .invalidOTPCode = error {
-                    // keep cached
-                } else {
-                    evictChallenge(handle: handle, challengeID: challenge.challengeID)
+                keepsChallenge: { error in
+                    if case .invalidOTPCode = error { return true }
+                    return false
                 }
-                throw error
+            ) { try await client.submitStepUpOTP(challenge, code: code) }
+
+        case "continueStepUpWithPasskey":
+            guard let challengeID = args["challengeID"] as? String else {
+                throw missingArgError(call.method, "challengeID")
             }
+            let challenge = try lookupChallenge(handle: handle, challengeID: challengeID)
+            return try await advanceStepUp(
+                handle: handle,
+                challenge: challenge,
+                // Unlike an OTP submit, most passkey failures happen
+                // before the request is sent — a dismissed sheet, an
+                // OS without platform WebAuthn, no usable credential —
+                // and leave the challenge good for a fallback step. So
+                // retire it only when the error says the token itself
+                // is gone.
+                keepsChallenge: { error in
+                    switch error {
+                    case .invalidChallengeToken, .expiredChallengeToken, .tokenReused:
+                        return false
+                    default:
+                        return true
+                    }
+                }
+            ) { try await client.continueStepUpWithPasskey(challenge) }
+
+        // Passkey -------------------------------------------------
+        case "registerPasskey":
+            let options = try decodeRegisterPasskeyOptions(args["options"])
+            let result = try await client.registerPasskey(options)
+            return Codec.encode(registration: result)
+        case "loginWithPasskey":
+            let options = try decodePasskeyLoginOptions(args["options"])
+            let user = try await client.loginWithPasskey(options)
+            return Codec.encode(user: user)
+        case "listPasskeys":
+            let credentials = try await client.listPasskeys()
+            return credentials.map { Codec.encode(credential: $0) }
+        case "renamePasskey":
+            guard let credentialID = args["credentialID"] as? String,
+                  let nickname = args["nickname"] as? String
+            else {
+                throw missingArgError(call.method, "credentialID/nickname")
+            }
+            try await client.renamePasskey(credentialID, nickname: nickname)
+            return nil
+        case "deletePasskey":
+            guard let credentialID = args["credentialID"] as? String else {
+                throw missingArgError(call.method, "credentialID")
+            }
+            try await client.deletePasskey(credentialID)
+            return nil
 
         // Cached readers -----------------------------------------
         case "getProfile":
@@ -781,6 +854,26 @@ private func decodeLoginWithPasswordOptions(_ raw: Any?) throws -> LoginWithPass
     return LoginWithPasswordOptions(emailAddress: email, password: password)
 }
 
+private func decodeRegisterPasskeyOptions(_ raw: Any?) throws -> RegisterPasskeyOptions {
+    guard let json = raw as? [String: Any],
+          let username = json["username"] as? String
+    else {
+        throw decodeError("RegisterPasskeyOptions: malformed payload")
+    }
+    return RegisterPasskeyOptions(
+        username: username,
+        displayName: json["displayName"] as? String,
+        nickname: json["nickname"] as? String
+    )
+}
+
+private func decodePasskeyLoginOptions(_ raw: Any?) throws -> PasskeyLoginOptions {
+    // Empty / nil falls through to the defaults so the Dart side can
+    // omit the map entirely.
+    let json = (raw as? [String: Any]) ?? [:]
+    return PasskeyLoginOptions(autofill: (json["autofill"] as? Bool) ?? false)
+}
+
 private func decodeMigrateOptions(_ raw: Any?) throws -> MigrateOptions {
     guard let json = raw as? [String: Any],
           let token = json["token"] as? String
@@ -861,6 +954,24 @@ private enum Codec {
             "challengeID": challenge.challengeID,
             "currentStep": challenge.currentStep ?? NSNull(),
             "requestedScope": challenge.requestedScope,
+        ]
+    }
+
+    static func encode(credential c: PasskeyCredential) -> [String: Any] {
+        [
+            "credentialID": c.credentialID,
+            "nickname": c.nickname ?? NSNull(),
+            "transports": c.transports,
+            "backupState": c.backupState,
+            "createdAt": c.createdAt,
+            "lastUsedAt": c.lastUsedAt,
+        ]
+    }
+
+    static func encode(registration r: PasskeyRegistrationResult) -> [String: Any] {
+        [
+            "credential": encode(credential: r.credential),
+            "alreadyRegistered": r.alreadyRegistered,
         ]
     }
 
@@ -990,8 +1101,12 @@ private func mapSessionError(_ error: PreludeAuthError) -> FlutterError {
         return FlutterError(code: "cancelled", message: "Request cancelled", details: nil)
     case .invalidConfiguration(let m):
         return FlutterError(code: "invalid_configuration", message: m, details: nil)
+    case .noLoginConfig(let m):
+        return FlutterError(code: "no_login_config", message: m, details: nil)
     case .invalidPassword(let m):
         return FlutterError(code: "invalid_password", message: m, details: nil)
+    case .passwordNotSet(let m):
+        return FlutterError(code: "password_not_set", message: m, details: nil)
     case .forbidden(let m):
         return FlutterError(code: "forbidden", message: m, details: nil)
     case .insufficientScope(let m):
@@ -1008,6 +1123,8 @@ private func mapSessionError(_ error: PreludeAuthError) -> FlutterError {
         return FlutterError(code: "passkey_registration_failed", message: m, details: nil)
     case .passkeyStepUnavailable(let m):
         return FlutterError(code: "passkey_step_unavailable", message: m, details: nil)
+    case .passkeyNotSupported(let m):
+        return FlutterError(code: "passkey_not_supported", message: m, details: nil)
     case .network(let underlying):
         return FlutterError(
             code: "network",

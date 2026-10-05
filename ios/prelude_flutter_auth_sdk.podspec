@@ -245,7 +245,7 @@ end
 
 Pod::Spec.new do |s|
   s.name             = 'prelude_flutter_auth_sdk'
-  s.version          = '0.6.0'
+  s.version          = '0.7.0'
   s.summary          = 'Prelude Flutter Auth SDK.'
   s.description      = <<-DESC
 Flutter plugin that bridges Prelude Auth to Flutter applications by
@@ -265,7 +265,9 @@ wrapping the native iOS PreludeAuth and Android auth SDKs.
   s.swift_version    = '5.7'
   s.module_name      = 'prelude_flutter_auth_sdk'
 
-  apple_auth_sdk_version = '0.6.0'
+  # To build against a local checkout:
+  #   PRELUDE_AUTH_SDK_LOCAL_PATH=<path to apple/PreludeAuth> pod install
+  apple_auth_sdk_version = '0.7.0'
   apple_sdk_version      = '0.5.1'
   vendor_dir = File.join(__dir__, 'sdk')
 

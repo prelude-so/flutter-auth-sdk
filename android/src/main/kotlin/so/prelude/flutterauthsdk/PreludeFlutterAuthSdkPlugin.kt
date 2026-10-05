@@ -15,11 +15,14 @@
 
 package so.prelude.flutterauthsdk
 
+import android.app.Activity
 import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
@@ -33,6 +36,7 @@ import kotlinx.coroutines.launch
 
 class PreludeFlutterAuthSdkPlugin :
     FlutterPlugin,
+    ActivityAware,
     MethodCallHandler {
     private lateinit var channel: MethodChannel
 
@@ -60,6 +64,16 @@ class PreludeFlutterAuthSdkPlugin :
      */
     @Volatile
     private var androidContext: Context? = null
+
+    /**
+     * Hosting Activity, when the engine is attached to one. Passkey
+     * ceremonies need it: the Credential Manager presents a system
+     * sheet, which the application context can't launch. `@Volatile`
+     * so an attach/detach write publishes immediately to in-flight
+     * method calls reading on the IO dispatcher.
+     */
+    @Volatile
+    private var activity: Activity? = null
 
     private val registry = ClientRegistry()
 
@@ -114,7 +128,10 @@ class PreludeFlutterAuthSdkPlugin :
         scope.launch {
             try {
                 val client = registry.resolveClient(context, handle, configRaw)
-                deliverSuccess(dispatch(call, args, handle, client, registry, context), result)
+                deliverSuccess(
+                    dispatch(call, args, handle, client, registry, context) { activity },
+                    result,
+                )
             } catch (e: CancellationException) {
                 // Structured-concurrency cancellation must propagate
                 // as-is. The Result is left without a reply only when
@@ -132,6 +149,22 @@ class PreludeFlutterAuthSdkPlugin :
         scope.cancel()
         registry.clear()
         androidContext = null
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        activity = null
+    }
+
+    override fun onDetachedFromActivity() {
+        activity = null
     }
 
     private fun handleDispose(call: MethodCall, result: Result) {
