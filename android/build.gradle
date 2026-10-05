@@ -1,5 +1,5 @@
 group = "so.prelude.flutterauthsdk"
-version = "0.6.0"
+version = "0.7.0"
 
 buildscript {
     ext.kotlin_version = "2.1.0"
@@ -52,7 +52,22 @@ android {
         // Native auth SDK. Pinned to the patch version so the
         // bridge contract this plugin compiles against is the same
         // one consumers resolve transitively at app build time.
-        implementation("so.prelude.android:auth-sdk:0.6.0")
+        //
+        // To build against a local `./gradlew :auth:publishToMavenLocal`,
+        // set `preludeAuthSdkVersion` in the app's `gradle.properties` or
+        // PRELUDE_ANDROID_AUTH_SDK_VERSION; the property takes precedence
+        // since a long-lived Gradle daemon may miss the environment.
+        //
+        // Mirrors the iOS `PRELUDE_AUTH_SDK_LOCAL_PATH` escape hatch.
+        // Single literal on its own line so the publish workflow can
+        // read the released pin without evaluating the overrides.
+        def preludeAuthSdkVersion = "0.7.1"
+        implementation(
+            "so.prelude.android:auth-sdk:" +
+                (project.findProperty("preludeAuthSdkVersion")
+                    ?: System.getenv("PRELUDE_ANDROID_AUTH_SDK_VERSION")
+                    ?: preludeAuthSdkVersion)
+        )
         // Anti-fraud signals. Wrapped by PreludeSignalsAdapter and
         // stamped onto unauthenticated logins when an SDK key is
         // configured (manifest meta-data or Dart override). Pin

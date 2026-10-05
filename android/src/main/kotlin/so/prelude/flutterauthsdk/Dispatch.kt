@@ -1,5 +1,6 @@
 package so.prelude.flutterauthsdk
 
+import android.app.Activity
 import android.content.Context
 import io.flutter.plugin.common.MethodCall
 import so.prelude.android.auth.FinalizeOAuthLoginResult
@@ -7,18 +8,25 @@ import so.prelude.android.auth.PreludeListSessionsOptions
 import so.prelude.android.auth.PreludeRevokeTarget
 import so.prelude.android.auth.PreludeAuthClient
 import so.prelude.android.auth.PreludeAuthError
+import so.prelude.android.auth.PreludeStepUpChallenge
 import so.prelude.android.auth.RedactedString
 import so.prelude.android.auth.changePassword
 import so.prelude.android.auth.canChangePassword
 import so.prelude.android.auth.checkOAuthEmailOTP
 import so.prelude.android.auth.checkOTP
+import so.prelude.android.auth.continueStepUpWithPasskey
+import so.prelude.android.auth.deletePasskey
 import so.prelude.android.auth.finalizeOAuthLogin
 import so.prelude.android.auth.getPasswordCompliancy
 import so.prelude.android.auth.initiateOAuthLogin
+import so.prelude.android.auth.listPasskeys
 import so.prelude.android.auth.listSessions
+import so.prelude.android.auth.loginWithPasskey
 import so.prelude.android.auth.loginWithPassword
 import so.prelude.android.auth.migrate
 import so.prelude.android.auth.logout
+import so.prelude.android.auth.registerPasskey
+import so.prelude.android.auth.renamePasskey
 import so.prelude.android.auth.requestStepUp
 import so.prelude.android.auth.resendOTP
 import so.prelude.android.auth.revokeSessions
@@ -37,7 +45,9 @@ internal val ASYNC_METHODS: Set<String> = setOf(
     "refresh", "logout", "invalidateSession",
     "listSessions", "revokeSessions",
     "requestStepUp", "sendStepUpOTP", "submitStepUpOTP",
-    "getActiveStepUp",
+    "getActiveStepUp", "continueStepUpWithPasskey",
+    "registerPasskey", "loginWithPasskey",
+    "listPasskeys", "renamePasskey", "deletePasskey",
     "getProfile", "getSessionID",
     "getAccessToken", "getAccessTokenExpiresAt",
 )
@@ -55,6 +65,7 @@ internal suspend fun dispatch(
     client: PreludeAuthClient,
     registry: ClientRegistry,
     context: Context,
+    activity: () -> Activity?,
 ): Any? = when (call.method) {
     // OTP -----------------------------------------------------
     "startOTPLogin" -> {
@@ -152,6 +163,36 @@ internal suspend fun dispatch(
         Codec.encodeChallenge(it)
     }
 
+    "continueStepUpWithPasskey" ->
+        handleContinueStepUpWithPasskey(args, handle, client, registry, activity)
+
+    // Passkey -------------------------------------------------
+    "registerPasskey" -> Codec.encodeRegistration(
+        client.registerPasskey(
+            requireActivity(activity, call.method),
+            decodeRegisterPasskeyOptions(args["options"]),
+        ),
+    )
+    "loginWithPasskey" -> Codec.encodeUser(
+        client.loginWithPasskey(requireActivity(activity, call.method)),
+    )
+    "listPasskeys" -> client.listPasskeys().map { Codec.encodeCredential(it) }
+    "renamePasskey" -> {
+        val credentialId = args["credentialID"] as? String
+        val nickname = args["nickname"] as? String
+        if (credentialId == null || nickname == null) {
+            throw missingArg("renamePasskey", "credentialID/nickname")
+        }
+        client.renamePasskey(credentialId, nickname)
+        null
+    }
+    "deletePasskey" -> {
+        val credentialId = args["credentialID"] as? String
+            ?: throw missingArg("deletePasskey", "credentialID")
+        client.deletePasskey(credentialId)
+        null
+    }
+
     // Cached readers ------------------------------------------
     "getProfile" -> client.getProfile()?.let { Codec.encodeProfile(it) }
     "getSessionID" -> client.getSessionId()
@@ -162,6 +203,23 @@ internal suspend fun dispatch(
     // If you add a new async method, also add it to the allowlist
     // *and* a branch here.
     else -> throw decodeError("dispatch: unhandled method `${call.method}`")
+}
+
+/**
+ * The Credential Manager presents a system sheet, so it needs the
+ * hosting Activity — the application context the rest of the bridge
+ * uses can't launch UI. Resolved through a supplier, and re-read here
+ * rather than snapshotted at dispatch entry, so a call that overlaps
+ * an attach doesn't fail on a value read moments too early.
+ */
+private fun requireActivity(activity: () -> Activity?, method: String): Activity {
+    val host = activity()
+    if (host == null || host.isFinishing || host.isDestroyed) {
+        throw PreludeAuthError.InvalidConfiguration(
+            "$method needs a foreground Activity; none is attached to the Flutter engine.",
+        )
+    }
+    return host
 }
 
 private suspend fun handleSendStepUpOTP(
@@ -189,31 +247,77 @@ private suspend fun handleSubmitStepUpOTP(
         throw missingArg("submitStepUpOTP", "challengeID/code")
     }
     val challenge = registry.lookupChallenge(handle, challengeId)
-    return try {
-        val next = client.submitStepUpOTP(challenge, code)
-        if (next != null) {
-            // Insert before evicting so a concurrent reader observing
-            // under the new ID never sees an empty slot during a
-            // multi-step transition.
-            registry.cacheChallenge(handle, next)
-            if (next.challengeId != challenge.challengeId) {
-                registry.evictChallenge(handle, challenge.challengeId)
-            }
-            Codec.encodeChallenge(next)
-        } else {
-            // Flow completed: post-completion refresh has already
-            // minted the scoped access token.
-            registry.evictChallenge(handle, challenge.challengeId)
-            null
-        }
+    return advanceStepUp(
+        handle,
+        registry,
+        challenge,
+        // A wrong code keeps the challenge usable up to the server's
+        // bucket limit. Any other error kills it.
+        keepsChallenge = { it is PreludeAuthError.InvalidOTPCode },
+    ) { client.submitStepUpOTP(challenge, code) }
+}
+
+private suspend fun handleContinueStepUpWithPasskey(
+    args: Map<*, *>,
+    handle: String,
+    client: PreludeAuthClient,
+    registry: ClientRegistry,
+    activity: () -> Activity?,
+): Any? {
+    val challengeId = args["challengeID"] as? String
+        ?: throw missingArg("continueStepUpWithPasskey", "challengeID")
+    val host = requireActivity(activity, "continueStepUpWithPasskey")
+    val challenge = registry.lookupChallenge(handle, challengeId)
+    return advanceStepUp(
+        handle,
+        registry,
+        challenge,
+        // Unlike an OTP submit, most passkey failures happen before the
+        // request is sent — a dismissed sheet, an OS without platform
+        // WebAuthn, no usable credential — and leave the challenge good
+        // for a fallback step. So retire it only when the error says the
+        // token itself is gone.
+        keepsChallenge = {
+            it !is PreludeAuthError.InvalidChallengeToken &&
+                it !is PreludeAuthError.ExpiredChallengeToken &&
+                it !is PreludeAuthError.TokenReused
+        },
+    ) { client.continueStepUpWithPasskey(host, challenge) }
+}
+
+/**
+ * Run one step-up [step] against [challenge] and reconcile the cache
+ * with its outcome: swap in the challenge the step returns, or drop
+ * the entry once the flow completes. On failure [keepsChallenge]
+ * decides whether the challenge survives for another attempt.
+ */
+private suspend fun advanceStepUp(
+    handle: String,
+    registry: ClientRegistry,
+    challenge: PreludeStepUpChallenge,
+    keepsChallenge: (PreludeAuthError) -> Boolean,
+    step: suspend () -> PreludeStepUpChallenge?,
+): Map<String, Any?>? {
+    val next = try {
+        step()
     } catch (e: PreludeAuthError) {
-        // `InvalidOTPCode` keeps the challenge usable up to the
-        // server's bucket limit. Any other error kills it.
-        if (e !is PreludeAuthError.InvalidOTPCode) {
-            registry.evictChallenge(handle, challenge.challengeId)
-        }
+        if (!keepsChallenge(e)) registry.evictChallenge(handle, challenge.challengeId)
         throw e
     }
+    if (next == null) {
+        // Flow completed: post-completion refresh has already minted
+        // the scoped access token.
+        registry.evictChallenge(handle, challenge.challengeId)
+        return null
+    }
+    // Insert before evicting so a concurrent reader observing under
+    // the new ID never sees an empty slot during a multi-step
+    // transition.
+    registry.cacheChallenge(handle, next)
+    if (next.challengeId != challenge.challengeId) {
+        registry.evictChallenge(handle, challenge.challengeId)
+    }
+    return Codec.encodeChallenge(next)
 }
 
 /**

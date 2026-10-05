@@ -5,6 +5,7 @@ import 'types/endpoint.dart';
 import 'types/migrate.dart';
 import 'types/oauth.dart';
 import 'types/otp.dart';
+import 'types/passkey.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
 import 'types/redacted_string.dart';
@@ -487,6 +488,98 @@ class PreludeAuthClient {
       config: _config,
       challenge: challenge,
       code: code,
+    );
+  }
+
+  /// Advance a step-up whose [StepUpChallenge.currentStep] is
+  /// `verify_passkey` by asserting an existing passkey. Returns the
+  /// next challenge, or `null` when the flow has completed and the
+  /// session has gained the requested scope — same contract as
+  /// [submitStepUpOTP].
+  ///
+  /// Throws [PasskeyStepUnavailableException] when the current step
+  /// isn't `verify_passkey`, and [CancelledException] when the user
+  /// dismisses the system sheet.
+  Future<StepUpChallenge?> continueStepUpWithPasskey(
+    StepUpChallenge challenge,
+  ) {
+    _ensureNotDisposed();
+    return _platform.continueStepUpWithPasskey(
+      handle: _handle,
+      config: _config,
+      challenge: challenge,
+    );
+  }
+
+  // ------------------------------------------------------------
+  // Passkey
+  // ------------------------------------------------------------
+
+  /// Register a passkey for the signed-in user.
+  ///
+  /// Requires a session holding `prld:passkey:write`, so call
+  /// [requestStepUp] with that scope and complete the challenge
+  /// first. The grant must be session- or profile-bound: a
+  /// single-use grant is not honored here.
+  ///
+  /// Prompts the platform authenticator, then returns the stored
+  /// credential. [PasskeyRegistrationResult.alreadyRegistered] is
+  /// `true` when the server already held it.
+  Future<PasskeyRegistrationResult> registerPasskey(
+    RegisterPasskeyOptions options,
+  ) {
+    _ensureNotDisposed();
+    return _platform.registerPasskey(
+      handle: _handle,
+      config: _config,
+      options: options,
+    );
+  }
+
+  /// Sign in with a passkey — no password, no OTP. Unauthenticated;
+  /// the authenticator picks the account.
+  ///
+  /// Throws [CancelledException] when the user dismisses the sheet
+  /// and [PasskeyStepUnavailableException] when the device holds no
+  /// usable credential.
+  Future<PreludeUser> loginWithPasskey([
+    PasskeyLoginOptions options = const PasskeyLoginOptions(),
+  ]) {
+    _ensureNotDisposed();
+    return _platform.loginWithPasskey(
+      handle: _handle,
+      config: _config,
+      options: options,
+    );
+  }
+
+  /// Passkeys registered against the signed-in user. Requires
+  /// `prld:passkey:write`.
+  Future<List<PreludePasskeyCredential>> listPasskeys() {
+    _ensureNotDisposed();
+    return _platform.listPasskeys(handle: _handle, config: _config);
+  }
+
+  /// Relabel a passkey. An empty [nickname] clears the label.
+  /// Cosmetic, but still requires `prld:passkey:write`.
+  Future<void> renamePasskey(String credentialID, String nickname) {
+    _ensureNotDisposed();
+    return _platform.renamePasskey(
+      handle: _handle,
+      config: _config,
+      credentialID: credentialID,
+      nickname: nickname,
+    );
+  }
+
+  /// Delete a passkey. Requires `prld:passkey:write`. The session is
+  /// refreshed afterwards so its `has_passkey` claim stays accurate.
+  Future<void> deletePasskey(String credentialID) {
+    _ensureNotDisposed();
+    return _platform.deletePasskey(
+      handle: _handle,
+      config: _config,
+      credentialID: credentialID,
     );
   }
 

@@ -4,6 +4,23 @@ Notable changes to the Prelude Flutter Auth SDK.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-09-25
+
+### Added
+- Passkey login: `loginWithPasskey([PasskeyLoginOptions])` signs a user in with the platform authenticator — no password, no OTP. `PasskeyLoginOptions.autofill` offers credentials through the keyboard's AutoFill row on iOS.
+- Passkey registration: `registerPasskey(RegisterPasskeyOptions)` for a session holding `prld:passkey:write`, returning a `PasskeyRegistrationResult` whose `alreadyRegistered` flag marks an idempotent repeat.
+- Passkey management: `listPasskeys()`, `renamePasskey(credentialID, nickname)` and `deletePasskey(credentialID)`, returning `PreludePasskeyCredential` values.
+- `continueStepUpWithPasskey(StepUpChallenge)` advances a step-up whose `currentStep` is `verify_passkey`, with the same next-challenge-or-`null` contract as `submitStepUpOTP`.
+- `PasskeyNotSupportedException` (`passkey_not_supported`) and `PasskeyAlreadyRegisteredException` (`passkey_already_registered`, reported by Android; iOS surfaces a generic registration failure until the native SDK distinguishes it). `PasskeyNotConfiguredException`, `PasskeyRegistrationFailedException`, `PasskeyStepUnavailableException` and `PasswordNotSetException` were already mapped by the bridge but not exported from the library — they are now.
+- `NoLoginConfigException` (`no_login_config`), returned when starting an OTP login
+  while the app has no login configuration accepting the
+  identifier's channel. Create one via the Auth Management API.
+
+### Changed
+- Bumps the iOS dependency to `PreludeAuth` `0.7.0` and the Android dependency to `so.prelude.android:auth-sdk:0.7.1`, the native releases that add passkey support. On Android, a deactivated user's login now maps to a forbidden error instead of a generic one.
+- The Android plugin is now `ActivityAware`: passkey ceremonies present a system sheet, which the application context can't launch. Calls made while the engine is attached to no Activity throw `InvalidConfigurationException`.
+- Passkey integrators on Android add `androidx.credentials` themselves (plus `credentials-play-services-auth` below API 34); the native SDK ships it `compileOnly` so apps that skip passkeys pull no extra dependency.
+
 ## [0.6.0] - 2026-07-01
 
 ### Added

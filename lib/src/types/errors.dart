@@ -52,8 +52,12 @@ sealed class PreludeAuthException implements Exception {
         return const TimeoutException();
       case 'invalid_configuration':
         return InvalidConfigurationException(message);
+      case 'no_login_config':
+        return NoLoginConfigException(message);
       case 'invalid_password':
         return InvalidPasswordException(message);
+      case 'password_not_set':
+        return PasswordNotSetException(message);
       case 'forbidden':
         return ForbiddenException(message);
       case 'insufficient_scope':
@@ -70,6 +74,10 @@ sealed class PreludeAuthException implements Exception {
         return PasskeyRegistrationFailedException(message);
       case 'passkey_step_unavailable':
         return PasskeyStepUnavailableException(message);
+      case 'passkey_not_supported':
+        return PasskeyNotSupportedException(message);
+      case 'passkey_already_registered':
+        return PasskeyAlreadyRegisteredException(message);
       case 'network':
         return NetworkException(message);
       case 'cancelled':
@@ -157,12 +165,30 @@ class InvalidConfigurationException extends PreludeAuthException {
   String get code => 'invalid_configuration';
 }
 
+/// The app has no login configuration accepting this identifier's
+/// channel. Create one via the Auth Management API.
+class NoLoginConfigException extends PreludeAuthException {
+  const NoLoginConfigException(super.message);
+  @override
+  String get code => 'no_login_config';
+}
+
 /// Password rejected by the server's policy. Distinct from
 /// [UnauthorizedException] ("wrong password").
 class InvalidPasswordException extends PreludeAuthException {
   const InvalidPasswordException(super.message);
   @override
   String get code => 'invalid_password';
+}
+
+/// Returned by `/login/email/password` when the user exists but has no
+/// password credential stored. Distinct from [UnauthorizedException]
+/// ("wrong password"); recover via a password reset/set flow instead
+/// of retrying the password.
+class PasswordNotSetException extends PreludeAuthException {
+  const PasswordNotSetException(super.message);
+  @override
+  String get code => 'password_not_set';
 }
 
 /// Caller is authenticated but policy denies this action.
@@ -227,6 +253,25 @@ class PasskeyStepUnavailableException extends PreludeAuthException {
   const PasskeyStepUnavailableException(super.message);
   @override
   String get code => 'passkey_step_unavailable';
+}
+
+/// This device or OS version can't drive a passkey ceremony (iOS
+/// below 16, Android below API 28, or the platform credential
+/// provider is unavailable). Thrown locally — the server is never
+/// contacted. Offer another factor.
+class PasskeyNotSupportedException extends PreludeAuthException {
+  const PasskeyNotSupportedException(super.message);
+  @override
+  String get code => 'passkey_not_supported';
+}
+
+/// The authenticator already holds a passkey for this account, so it
+/// refused to create another. Nothing to recover from — the existing
+/// credential still works for login.
+class PasskeyAlreadyRegisteredException extends PreludeAuthException {
+  const PasskeyAlreadyRegisteredException(super.message);
+  @override
+  String get code => 'passkey_already_registered';
 }
 
 /// Transport / TLS / DNS failure.

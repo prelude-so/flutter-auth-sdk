@@ -1,6 +1,6 @@
 name: prelude_flutter_auth_sdk
 description: "Prelude Flutter Auth SDK. Easily integrate Prelude Auth in your Flutter application."
-version: 0.6.0
+version: 0.7.0
 homepage: "https://prelude.so"
 documentation: "https://docs.prelude.so/introduction/frontend-sdks/flutter"
 repository: "https://github.com/prelude-so/flutter-auth-sdk"

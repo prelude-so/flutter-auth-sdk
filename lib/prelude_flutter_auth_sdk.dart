@@ -21,7 +21,14 @@ export 'src/types/errors.dart'
         InvalidPasswordException,
         MissingChallengeTokenException,
         NetworkException,
+        NoLoginConfigException,
         NotFoundException,
+        PasskeyAlreadyRegisteredException,
+        PasskeyNotConfiguredException,
+        PasskeyNotSupportedException,
+        PasskeyRegistrationFailedException,
+        PasskeyStepUnavailableException,
+        PasswordNotSetException,
         PreludeAuthException,
         PreludeAuthGenericException,
         RateLimitedException,
@@ -53,6 +60,12 @@ export 'src/types/oauth.dart'
         OAuthOtpRequired,
         OAuthProvider;
 export 'src/types/otp.dart' show StartOTPLoginOptions;
+export 'src/types/passkey.dart'
+    show
+        PasskeyLoginOptions,
+        PasskeyRegistrationResult,
+        PreludePasskeyCredential,
+        RegisterPasskeyOptions;
 export 'src/types/password.dart'
     show
         LoginWithPasswordOptions,

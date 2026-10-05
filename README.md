@@ -8,14 +8,20 @@ It is provided as a regular Flutter plugin that you can add as a dependency in y
 
 ```yaml
 dependencies:
-  prelude_flutter_auth_sdk: ^0.6.0
+  prelude_flutter_auth_sdk: ^0.7.0
 ```
 
 ```bash
 flutter pub add prelude_flutter_auth_sdk
 ```
 
-iOS deployment target: **15.1**. Android minimum SDK: **API 26**. The plugin pulls the native SDKs in for you — `pod install` downloads `PreludeAuth` (and `Prelude`, the signals SDK) on iOS, and Gradle resolves `so.prelude.android:auth-sdk` (plus `so.prelude.android:sdk` for signals) from Maven Central on Android. Nothing else to add to your project — no extra coordinates in your iOS Podfile or Android `build.gradle`.
+### Requirements
+
+- iOS deployment target **15.1+**
+- Android minimum SDK **API 26**
+- Dart **3.9.2+** (`^3.9.2`) / Flutter **3.35+**
+
+The plugin pulls the native SDKs in for you — `pod install` downloads `PreludeAuth` (and `Prelude`, the signals SDK) on iOS, and Gradle resolves `so.prelude.android:auth-sdk` (plus `so.prelude.android:sdk` for signals) from Maven Central on Android. Nothing else to add to your project — no extra coordinates in your iOS Podfile or Android `build.gradle`.
 
 #### Configure the client
 
@@ -156,6 +162,71 @@ final next = await client.submitStepUpOTP(challenge, '123456');
 ```
 
 `client.getActiveStepUp()` returns the most recent in-flight challenge so a UI can resume from a cold start.
+
+When `challenge.currentStep` is `verify_passkey`, advance it with the platform authenticator instead of a code:
+
+```dart
+final next = await client.continueStepUpWithPasskey(challenge);
+```
+
+#### Passkeys
+
+Sign in with a passkey — no email, no code. The authenticator picks the account:
+
+```dart
+final user = await client.loginWithPasskey();
+```
+
+Registering one needs a session holding `prld:passkey:write`, granted by a step-up. The grant must be session- or profile-bound; a single-use grant is not honored:
+
+```dart
+final challenge = await client.requestStepUp(scope: 'prld:passkey:write');
+await client.sendStepUpOTP(challenge);
+await client.submitStepUpOTP(challenge, '123456');
+
+final result = await client.registerPasskey(
+  RegisterPasskeyOptions(username: 'alice@example.com', nickname: 'iPhone'),
+);
+// `result.alreadyRegistered` is true when the server already held it.
+```
+
+Management, also gated on `prld:passkey:write`:
+
+```dart
+final credentials = await client.listPasskeys();
+await client.renamePasskey(credentials.first.credentialID, 'Work phone');
+await client.deletePasskey(credentials.first.credentialID);
+```
+
+A dismissed sheet throws `CancelledException`; a device that can't run a ceremony throws `PasskeyNotSupportedException`.
+
+Platform setup — the OS verifies the app's association with the relying-party host before any ceremony, so both halves are required:
+
+- **iOS 16+** — add the `webcredentials:<rp-id>` associated-domains entitlement, where `<rp-id>` is the host serving `/.well-known/apple-app-site-association`. Register the app's `<TeamID>.<bundleID>` in your project's passkey configuration.
+
+- **Android API 28+** — the Credential Manager is `compileOnly` in the native SDK, so add it in `android/app/build.gradle.kts` (the play-services provider is required below API 34):
+
+  ```kotlin
+  dependencies {
+      implementation("androidx.credentials:credentials:1.5.0")
+      implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+  }
+  ```
+
+  Then declare the Digital Asset Links statement in `android/app/src/main/AndroidManifest.xml` and register the app's package name and signing-key SHA-256 fingerprint in your passkey configuration:
+
+  ```xml
+  <meta-data
+      android:name="asset_statements"
+      android:resource="@string/asset_statements" />
+  ```
+
+  ```xml
+  <!-- res/values/strings.xml -->
+  <string name="asset_statements" translatable="false">
+      [{\"include\":\"https://&lt;rp-id&gt;/.well-known/assetlinks.json\"}]
+  </string>
+  ```
 
 #### Change password
 

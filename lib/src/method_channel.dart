@@ -6,6 +6,7 @@ import 'types/errors.dart';
 import 'types/migrate.dart';
 import 'types/oauth.dart';
 import 'types/otp.dart';
+import 'types/passkey.dart';
 import 'types/password.dart';
 import 'types/profile.dart';
 import 'types/redacted_string.dart';
@@ -345,6 +346,101 @@ class MethodChannelPreludeAuthClient extends PreludeAuthClientPlatform {
       _baseArgs(handle, config),
     );
     return raw == null ? null : StepUpChallenge.fromJson(raw);
+  }
+
+  @override
+  Future<StepUpChallenge?> continueStepUpWithPasskey({
+    required String handle,
+    required ClientConfig config,
+    required StepUpChallenge challenge,
+  }) async {
+    // Only the [challengeID] travels over the channel; the token,
+    // expiry and the server's WebAuthn assertion options all live in
+    // the native plugin's per-handle cache.
+    final raw = await _invoke<Map<Object?, Object?>>(
+      'continueStepUpWithPasskey',
+      {..._baseArgs(handle, config), 'challengeID': challenge.challengeID},
+    );
+    if (raw == null) return null;
+    return StepUpChallenge.fromJson(raw);
+  }
+
+  @override
+  Future<PasskeyRegistrationResult> registerPasskey({
+    required String handle,
+    required ClientConfig config,
+    required RegisterPasskeyOptions options,
+  }) async {
+    final raw = await _invokeMap('registerPasskey', {
+      ..._baseArgs(handle, config),
+      'options': options.toJson(),
+    });
+    return PasskeyRegistrationResult.fromJson(raw);
+  }
+
+  @override
+  Future<PreludeUser> loginWithPasskey({
+    required String handle,
+    required ClientConfig config,
+    required PasskeyLoginOptions options,
+  }) async {
+    final raw = await _invokeMap('loginWithPasskey', {
+      ..._baseArgs(handle, config),
+      'options': options.toJson(),
+    });
+    return PreludeUser.fromJson(raw);
+  }
+
+  @override
+  Future<List<PreludePasskeyCredential>> listPasskeys({
+    required String handle,
+    required ClientConfig config,
+  }) async {
+    // An empty list is a valid answer, so a null reply is a bridge
+    // contract violation rather than "no credentials".
+    final raw = await _invoke<List<Object?>>(
+      'listPasskeys',
+      _baseArgs(handle, config),
+    );
+    if (raw == null) {
+      throw StateError(
+        'PreludeAuth bridge returned null for `listPasskeys`; '
+        'expected a non-null list.',
+      );
+    }
+    return raw
+        .map(
+          (e) => PreludePasskeyCredential.fromJson(
+            Map<Object?, Object?>.from(e! as Map),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> renamePasskey({
+    required String handle,
+    required ClientConfig config,
+    required String credentialID,
+    required String nickname,
+  }) async {
+    await _invoke<void>('renamePasskey', {
+      ..._baseArgs(handle, config),
+      'credentialID': credentialID,
+      'nickname': nickname,
+    });
+  }
+
+  @override
+  Future<void> deletePasskey({
+    required String handle,
+    required ClientConfig config,
+    required String credentialID,
+  }) async {
+    await _invoke<void>('deletePasskey', {
+      ..._baseArgs(handle, config),
+      'credentialID': credentialID,
+    });
   }
 
   @override
