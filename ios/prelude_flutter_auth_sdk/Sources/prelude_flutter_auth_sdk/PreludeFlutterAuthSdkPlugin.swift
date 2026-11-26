@@ -15,6 +15,10 @@
 
 import Flutter
 import UIKit
+#if canImport(PreludeAuth)
+import PreludeAuth
+import PreludeAuthSocial
+#endif
 
 public class PreludeFlutterAuthSdkPlugin: NSObject, FlutterPlugin {
     /// Per-handle native client cache. Reads + writes are

@@ -1,5 +1,12 @@
 import Foundation
 
+#if canImport(PreludeAuth)
+// Swift Package Manager: PreludeAuth is its own module, so its public
+// adapter is usable as is.
+import PreludeAuth
+typealias FlutterPreludeSignalsAdapter = PreludeSignalsAdapter
+#else
+
 /// Bridges the vendored `PreludeSignalsDispatcher` protocol onto
 /// the vendored `Prelude` signals type.
 ///
@@ -31,3 +38,4 @@ struct FlutterPreludeSignalsAdapter: PreludeSignalsDispatcher, @unchecked Sendab
         return try await prelude.dispatchSignals()
     }
 }
+#endif
